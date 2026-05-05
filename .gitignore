@@ -1,0 +1,34 @@
+# Database
+palestra.db
+*.db
+
+# Bot state & persistence
+bot_state.pickle
+*.pickle
+
+# Logs
+bot.log
+*.log
+*.log.*
+
+# Encryption keys
+.fernet_key
+fernet.key
+
+# Environment
+.env
+.env.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
