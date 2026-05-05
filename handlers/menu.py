@@ -48,9 +48,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("📋 Lista Corsi", callback_data="menu_corsi"),
              InlineKeyboardButton("📅 Prenota", callback_data="menu_prenota")],
-            [InlineKeyboardButton("🤖 Auto-Booking", callback_data="menu_autobook"),
-             InlineKeyboardButton("ℹ️ Info", callback_data="menu_info")],
-            [InlineKeyboardButton("🚪 Logout", callback_data="logout_start")],
+            [InlineKeyboardButton("🎫 QR Code", callback_data="qr_genera"),
+             InlineKeyboardButton("🤖 Auto-Booking", callback_data="menu_autobook")],
+            [InlineKeyboardButton("ℹ️ Info", callback_data="menu_info"),
+             InlineKeyboardButton("🚪 Logout", callback_data="logout_start")],
         ])
 
     # Se arriva da callback, edita — sennò rispondi

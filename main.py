@@ -83,6 +83,7 @@ async def post_init(app):
         BotCommand("start", "🏠 Menu principale"),
         BotCommand("login", "🔐 Accedi con WellTeam"),
         BotCommand("logout", "🚪 Esci"),
+        BotCommand("qr", "🎫 QR Code ingresso"),
         BotCommand("prenota", "📅 Prenota un corso"),
         BotCommand("corsi", "📋 Lista corsi"),
         BotCommand("autobook", "🤖 Prenotazioni automatiche"),
@@ -100,12 +101,14 @@ def register_all_handlers(app):
     from handlers.corsi import register as reg_corsi
     from handlers.autobook import register as reg_autobook
     from handlers.reminders import register as reg_reminders
+    from handlers.qr import register as reg_qr
 
     reg_menu(app)        # Menu (catch-all per callback menu_*)
     reg_auth(app)        # Login/Logout
     reg_corsi(app)       # Lista corsi, Prenota, Prenotazioni
     reg_autobook(app)    # Auto-booking
     reg_reminders(app)   # Reminder 3h / 60min
+    reg_qr(app)          # QR Code (sticky UX)
 
     # Fallback
     async def fallback(update: Update, context):
