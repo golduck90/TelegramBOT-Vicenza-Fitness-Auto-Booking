@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Bot data (persistent, not source)
+palestra.db
+bot_state.pickle
+bot.log
+
+# Secrets
+.env
+.fernet_key
+
+# System
+.DS_Store
+Thumbs.db

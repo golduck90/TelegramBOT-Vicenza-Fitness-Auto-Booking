@@ -1,0 +1,22 @@
+services:
+  bot-palestra:
+    build: .
+    container_name: vicenza-fitness-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Dati persistenti
+      - ./palestra.db:/app/palestra.db
+      - ./bot_state.pickle:/app/bot_state.pickle
+      # Config sensibile
+      - ./.fernet_key:/app/.fernet_key
+      # Logs
+      - ./bot.log:/app/bot.log
+    environment:
+      - TZ=Europe/Rome
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
