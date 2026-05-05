@@ -128,7 +128,7 @@ def main():
 
     # Crea app Telegram
     persistence = PicklePersistence(
-        filepath="bot_state.pickle",
+        filepath=str(config.DATA_DIR / "bot_state.pickle"),
         store_data=PersistenceInput(
             user_data=True,
             chat_data=True,

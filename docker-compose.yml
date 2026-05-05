@@ -1,0 +1,23 @@
+services:
+  bot:
+    build: .
+    container_name: vicenza-fitness-bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:?Errore: TELEGRAM_BOT_TOKEN non impostato}
+      - WELLTEAM_APP_TOKEN=${WELLTEAM_APP_TOKEN:?Errore: WELLTEAM_APP_TOKEN non impostato}
+      - DATA_DIR=/app/data
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./data:/app/data
+    # Limita risorse
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    # Sicurezza: droppa capabilities non necessarie (OWASP RULE #3)
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN       # Necessario per scrivere file (DB, log)

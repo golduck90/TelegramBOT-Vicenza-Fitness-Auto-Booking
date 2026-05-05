@@ -61,11 +61,32 @@ python3 main.py
 ### Docker
 
 ```bash
+# 1. Crea un file .env con i token
+cp .env.example .env
+nano .env   # Inserisci TELEGRAM_BOT_TOKEN e WELLTEAM_APP_TOKEN
+
+# 2. Build e avvia con docker compose
+docker compose up --build -d
+
+# 3. Log in tempo reale
+docker compose logs -f
+```
+
+### Docker manuale
+
+```bash
 docker build -t vicenza-fitness-bot .
 docker run -d \
+  --name vicenza-fitness-bot \
+  --restart unless-stopped \
   -e TELEGRAM_BOT_TOKEN="il_tuo_token" \
   -e WELLTEAM_APP_TOKEN="il_tuo_app_token" \
-  -v bot_data:/app \
+  -e DATA_DIR=/app/data \
+  -v vicenza_data:/app/data \
+  --cap-drop=ALL \
+  --cap-add=CHOWN \
+  --memory=256M \
+  --cpus=0.5 \
   vicenza-fitness-bot
 ```
 

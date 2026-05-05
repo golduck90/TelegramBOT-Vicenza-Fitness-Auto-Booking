@@ -9,8 +9,10 @@ from pathlib import Path
 
 # ── Percorsi ──────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "palestra.db"
-FERNET_KEY_FILE = BASE_DIR / ".fernet_key"
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR)))
+DB_PATH = DATA_DIR / "palestra.db"
+FERNET_KEY_FILE = DATA_DIR / ".fernet_key"
+LOG_FILE = DATA_DIR / "bot.log"
 
 # ── Telegram ──────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
