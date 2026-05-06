@@ -15,8 +15,9 @@ Logica:
 import logging
 import time
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
+from zoneinfo import ZoneInfo
 
 import requests
 import db
@@ -25,8 +26,8 @@ import config
 
 logger = logging.getLogger("scheduler")
 
-# Ora Roma: UTC+1 (CET) inverno, UTC+2 (CEST) estate
-ROME_OFFSET = timezone(timedelta(hours=2))  # Maggio → CEST (+2)
+# Ora Roma: gestione automatica DST (CET/CEST)
+ROME_TZ = ZoneInfo("Europe/Rome")
 
 TARGET_HOUR = 0      # 00:10
 TARGET_MINUTE = 10
@@ -181,7 +182,7 @@ class AutoBookScheduler:
     # ── Loop principale ────────────────────────────────────────────────
 
     def _rome_now(self) -> datetime:
-        return datetime.now(ROME_OFFSET)
+        return datetime.now(ROME_TZ)
 
     def _loop(self):
         while self._running:

@@ -352,7 +352,7 @@ async def cb_book_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = db.get_user(telegram_id)
     if not user or not user.get("auth_token"):
         # Conferma auto-booking e basta
-        await _confirm_autobook(query, c, item_id, description)
+        await _confirm_autobook(context, query, c, item_id, description)
         return
 
     import wellteam, config
@@ -365,7 +365,7 @@ async def cb_book_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if not success or not lessons:
-        await _confirm_autobook(query, c, item_id, description,
+        await _confirm_autobook(context, query, c, item_id, description,
                                 extra=f"\n\n📅 {date_str} — calendario non disponibile, proverò al prossimo ciclo.")
         return
 
@@ -385,18 +385,18 @@ async def cb_book_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         break
 
     if not lesson:
-        await _confirm_autobook(query, c, item_id, description,
+        await _confirm_autobook(context, query, c, item_id, description,
                                 extra=f"\n\n📅 {date_str} — corso non trovato nel calendario, proverò al prossimo ciclo.")
         return
 
     # 5) Controlla stato prenotazione
     if lesson.get("IsUserPresent"):
-        await _confirm_autobook(query, c, item_id, description,
+        await _confirm_autobook(context, query, c, item_id, description,
                                 extra=f"\n\n✅ Sei già prenotato per {date_str}!")
         return
 
     if lesson.get("AvailablePlaces", 1) == 0:
-        await _confirm_autobook(query, c, item_id, description,
+        await _confirm_autobook(context, query, c, item_id, description,
                                 extra=f"\n\n⏳ Posti esauriti per {date_str}. Riproverò al prossimo ciclo!")
         return
 
@@ -428,7 +428,7 @@ async def cb_book_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def _confirm_autobook(query, c, item_id, description, extra=""):
+async def _confirm_autobook(context, query, c, item_id, description, extra=""):
     """Conferma che l'auto-booking è stato attivato."""
     await query.edit_message_text(
         f"✅ *Auto-booking attivato!* 🆔 #{item_id}\n\n"

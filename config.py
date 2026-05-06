@@ -21,10 +21,13 @@ if not TELEGRAM_BOT_TOKEN:
 # ── WellTeam API (token di default) ──────────────────────
 # AppToken: token company-level di Vicenza Fitness (uguale per tutti)
 # AuthToken: personale, ottenuto dopo login
-WELLTEAM_APP_TOKEN = os.environ.get(
-    "WELLTEAM_APP_TOKEN",
-    "WELLTEAM_APP_TOKEN_RIMOSSO"
-)
+WELLTEAM_APP_TOKEN = os.environ.get("WELLTEAM_APP_TOKEN")
+if not WELLTEAM_APP_TOKEN:
+    raise RuntimeError(
+        "❌ WELLTEAM_APP_TOKEN non impostato. "
+        "È il token company-level di Vicenza Fitness. "
+        "Ottienilo dall'app WellTeam o da un backup."
+    )
 WELLTEAM_AUTH_TOKEN = os.environ.get("WELLTEAM_AUTH_TOKEN", "")
 WELLTEAM_IYES_URL = os.environ.get("WELLTEAM_IYES_URL", "http://185.103.80.254:65432/")
 WELLTEAM_BASE_URL = "https://inforyouwebgw.teamsystem.com/api/v1"
