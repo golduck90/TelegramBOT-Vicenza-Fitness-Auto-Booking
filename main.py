@@ -142,7 +142,6 @@ def register_all_handlers(app):
 
 def _print_banner():
     """Stampa il banner di avvio con logo ASCII, versione e funzionalità."""
-    banner = r"""
     banner = r"""╔══════════════════════════════════════════════════════════════════════╗
 ║   ____  _    _ _______ ____   ____   ____  _  _______ _   _  _____  ║
 ║  / __ \| |  | |__   __|  _ \ / __ \ / __ \| |/ /_   _| \ | |/ ____| ║
@@ -165,7 +164,6 @@ def _print_banner():
 ║  MOTD: Ogni ripetizione è un passo verso la grandezza                ║
 ║         — Solo chi si allena con costanza arriva lontano             ║
 ╚══════════════════════════════════════════════════════════════════════╝"""
-"""
     print(banner, flush=True)
 
 
