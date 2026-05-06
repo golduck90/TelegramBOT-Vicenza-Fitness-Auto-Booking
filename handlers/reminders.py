@@ -189,7 +189,10 @@ class ReminderChecker:
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=reply_markup,
             )
-            loop = self._application.loop
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
             if loop and loop.is_running():
                 asyncio.run_coroutine_threadsafe(coro, loop)
             else:
@@ -207,7 +210,10 @@ class ReminderChecker:
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=reply_markup,
             )
-            loop = self._application.loop
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
             if loop and loop.is_running():
                 asyncio.run_coroutine_threadsafe(coro, loop)
         except Exception as e:

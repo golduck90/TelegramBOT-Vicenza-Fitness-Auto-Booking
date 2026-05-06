@@ -267,8 +267,8 @@ class AutoBookScheduler:
             if check_date.weekday() != day_of_week:
                 continue
             date_str = check_date.strftime("%Y-%m-%d")
-            if item.get("last_booked_date") == date_str:
-                # Già prenotato per questa data (magari manualmente)
+            if item.get("last_booked_date") == date_str and item.get("last_booked_lesson"):
+                # Già prenotato per questa data (dal sistema auto-booking)
                 logger.info(f"Item #{item_id}: già prenotato per {date_str}, retry annullato")
                 db.reset_auto_book_retry(item_id)
                 return
@@ -394,7 +394,7 @@ class AutoBookScheduler:
 
             date_str = check_date.strftime("%Y-%m-%d")
 
-            if item.get("last_booked_date") == date_str:
+            if item.get("last_booked_date") == date_str and item.get("last_booked_lesson"):
                 logger.debug(f"Item #{item_id}: già prenotato per {date_str}")
                 continue
 

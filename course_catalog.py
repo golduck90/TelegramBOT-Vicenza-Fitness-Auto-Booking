@@ -13,15 +13,14 @@ Questo permette di:
 """
 import json
 import logging
-import os
 from datetime import datetime
-from pathlib import Path
 from typing import List, Dict, Optional
+import config
 
 logger = logging.getLogger("catalog")
 
 # Path del file catalogo (nella stessa directory del DB)
-CATALOG_FILE = Path(__file__).resolve().parent / "course_catalog.json"
+CATALOG_FILE = config.DATA_DIR / "course_catalog.json"
 
 # Giorni della settimana in italiano
 DAY_NAMES = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]

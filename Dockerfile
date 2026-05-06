@@ -24,8 +24,11 @@ RUN pip install --no-cache-dir "python-telegram-bot[job-queue,rate-limiter]>=20.
 # Copy application code
 COPY . .
 
-# Run as non-root
-RUN useradd -m -u 1001 botuser && chown -R botuser:botuser /app
+# Run as non-root with persistent data directory
+RUN useradd -m -u 1001 botuser && \
+    chown -R botuser:botuser /app && \
+    mkdir -p /app/data && \
+    chown -R botuser:botuser /app/data
 USER botuser
 
 # Healthcheck: verifica che il processo Python sia vivo

@@ -126,16 +126,16 @@ Mantenute dal code review (`CODE_REVIEW.md`) e dall'audit produzione (`REVIEW_CO
 | — | `.env.example` con token reali | ✅ RISOLTO — solo placeholder |
 
 ### 🟠 Importanti — Da fare PRESTO
-| # | Problema | Dettaglio |
-|---|----------|-----------|
-| H1 | `bookings.py` mai importato (dead code) | 206 righe morte. Rimuovere o integrare. |
-| H2 | `courses.py` mai importato (dead code) | 130 righe morte. `/calendario` irraggiungibile. |
-| H3 | SQLite senza lock esplicito | `_db_lock` definito mai usato. 3 thread scrivono concorrentemente. |
-| H4 | Rate limiter non thread-safe | `_user_timestamps` condiviso senza lock. |
-| H5 | Password in query params HTTP | GET login → password in access log. Usare POST. |
-| H6 | `application.loop` fragile | API interna ptb, potrebbe sparire in v23+. |
-| H7 | `last_booked_date` potrebbe non matchare | Se utente prenota manualmente un altro slot stesso giorno, retry si ferma. |
-| H8 | `authenticate` non valida token | Login OK ma token potrebbe non funzionare. |
+| # | Problema | Dettaglio | Stato |
+|---|----------|-----------|-------|
+| H1 | `bookings.py` mai importato (dead code) | 206 righe morte. | ✅ RIMOSSO |
+| H2 | `courses.py` mai importato (dead code) | 130 righe morte. `/calendario` irraggiungibile. | ✅ RIMOSSO |
+| H3 | SQLite senza lock esplicito | `_db_lock` definito mai usato. 3 thread scrivono concorrentemente. | ✅ FIXATO — `_LockedConnection` wrappa commit |
+| H4 | Rate limiter non thread-safe | `_user_timestamps` condiviso senza lock. | ✅ FIXATO — `threading.Lock` aggiunto |
+| H5 | Password in query params HTTP | GET login → password in access log. Backend di terzi. | ⏸️ BACKEND — non modificabile |
+| H6 | `application.loop` fragile | API interna ptb, potrebbe sparire in v23+. | ✅ FIXATO — `asyncio.get_running_loop()` |
+| H7 | `last_booked_date` potrebbe non matchare | Se utente prenota manualmente un altro slot stesso giorno, retry si ferma. | ✅ FIXATO — check anche `last_booked_lesson` |
+| H8 | `authenticate` non valida token | Login OK ma token potrebbe non funzionare. | ✅ FIXATO — `/webuser/me` obbligatorio |
 
 ### 🟡 Medie — Migliorie
 | # | Problema | Dettaglio |

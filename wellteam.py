@@ -70,7 +70,7 @@ def authenticate(username: str, password: str, company_id: int = None) -> Option
 
         auth_token = data["Item"]
 
-        # 2) Ottieni l'utente (per AppToken e user_id)
+        # 2) Ottieni l'utente (per AppToken e user_id) — VALIDA il token
         r2 = sess.get(
             f"{config.WELLTEAM_BASE_URL}/webuser/me",
             headers={
@@ -80,15 +80,19 @@ def authenticate(username: str, password: str, company_id: int = None) -> Option
             timeout=15,
         )
 
-        app_token = ""
-        user_id = 0
-        if r2.status_code == 200:
-            me_data = r2.json()
-            if me_data.get("Successful") and me_data.get("Item"):
-                user_info = me_data["Item"]
-                user_id = user_info.get("Id", 0)
-                # L'AppToken di solito è lo stesso AuthToken per l'app
-                app_token = auth_token
+        if r2.status_code != 200:
+            logger.warning(f"Login valido ma token non funziona per {username}: HTTP {r2.status_code}")
+            return None
+
+        me_data = r2.json()
+        if not me_data.get("Successful") or not me_data.get("Item"):
+            logger.warning(f"Token non valido per {username}: {me_data.get('ErrorMessage', 'risposta vuota')}")
+            return None
+
+        user_info = me_data["Item"]
+        user_id = user_info.get("Id", 0)
+        # L'AppToken di solito è lo stesso AuthToken per l'app
+        app_token = auth_token
 
         return {
             "auth_token": auth_token,

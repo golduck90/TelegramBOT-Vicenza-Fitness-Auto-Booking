@@ -17,16 +17,42 @@ _db_lock = threading.Lock()
 def _get_conn() -> sqlite3.Connection:
     """Restituisce una connessione thread-safe al DB."""
     if not hasattr(_local, "conn") or _local.conn is None:
-        _local.conn = sqlite3.connect(str(config.DB_PATH))
-        _local.conn.row_factory = sqlite3.Row
-        _local.conn.execute("PRAGMA journal_mode=WAL")    # Concorrenza
-        _local.conn.execute("PRAGMA foreign_keys=ON")      # Integrità
-        _local.conn.execute("PRAGMA busy_timeout=5000")    # Timeout 5s
+        raw = sqlite3.connect(str(config.DB_PATH))
+        raw.row_factory = sqlite3.Row
+        raw.execute("PRAGMA journal_mode=WAL")    # Concorrenza
+        raw.execute("PRAGMA foreign_keys=ON")      # Integrità
+        raw.execute("PRAGMA busy_timeout=5000")    # Timeout 5s
+        # Wrapper che serializza le commit con _db_lock
+        _local.conn = _LockedConnection(raw, _db_lock)
     return _local.conn
+
+
+class _LockedConnection:
+    """Wrapper per sqlite3.Connection che serializza commit() con un Lock."""
+    def __init__(self, conn: sqlite3.Connection, lock: threading.Lock):
+        object.__setattr__(self, '_conn', conn)
+        object.__setattr__(self, '_lock', lock)
+
+    def __getattr__(self, name):
+        if name == 'commit':
+            return self._locked_commit
+        return getattr(object.__getattribute__(self, '_conn'), name)
+
+    def __setattr__(self, name, value):
+        if name in ('_conn', '_lock'):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(object.__getattribute__(self, '_conn'), name, value)
+
+    def _locked_commit(self):
+        with object.__getattribute__(self, '_lock'):
+            object.__getattribute__(self, '_conn').commit()
 
 
 def init_db():
     """Crea le tabelle se non esistono."""
+    # Assicura che la directory dati esista
+    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = _get_conn()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS users (
