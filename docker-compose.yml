@@ -1,16 +1,32 @@
 version: "3.9"
+
 services:
   bot-palestra:
     build: .
+    image: vicenza-fitness-bot:${VERSION:-latest}
     container_name: vicenza-fitness-bot
     restart: unless-stopped
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - WELLTEAM_APP_TOKEN=${WELLTEAM_APP_TOKEN}
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
-      - palestra_data:/app
-    # Nessuna healthcheck HTTP — il bot non espone porte
+      # Solo dati persistenti, NON sovrascrivere il codice dell'immagine!
+      - palestra_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'python3 main.py' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "256M"
+        reservations:
+          cpus: "0.25"
+          memory: "128M"
 
 volumes:
   palestra_data:

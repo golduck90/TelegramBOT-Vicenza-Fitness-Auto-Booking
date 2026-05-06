@@ -2,7 +2,12 @@ __pycache__
 *.pyc
 .git
 .gitignore
-docker-compose.yml
-bot.log
+.env
+.env.example
 *.md
+docker-compose.yml
+docker-compose*.yml
+bot.log
 .DS_Store
+CODE_REVIEW.md
+REVIEW_CONTAINER.md
