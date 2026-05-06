@@ -156,7 +156,7 @@ def _print_banner():
 ║         — Solo chi si allena con costanza arriva lontano ║
 ╚══════════════════════════════════════════════════════════╝
 """
-    print(banner)
+    print(banner, flush=True)
 
 
 def main():
