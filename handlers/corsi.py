@@ -138,7 +138,9 @@ async def _show_corsi(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: 
         day_count[dw] = day_count.get(dw, 0) + 1
 
     now_wd = datetime.now().weekday()
-    mode_label = "📋 *Lista Corsi*" if mode == "view" else "📅 *Prenota un corso*"
+    # Finestra prenotabile: oggi + 3 giorni (VisibleDays=4)
+    bookable_days = {(now_wd + d) % 7 for d in range(4)}
+    mode_label = "📅 *Prenota un corso*"
     context.user_data["corsi_mode"] = mode
 
     msg = f"{mode_label}\n\n📆 *Scegli un giorno:*\n\n"
@@ -147,7 +149,19 @@ async def _show_corsi(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: 
         cnt = day_count.get(i, 0)
         today = " ← Oggi" if i == now_wd else ""
         if cnt > 0:
-            buttons.append([InlineKeyboardButton(f"{'🟢' if cnt > 0 else '⚪'} {DAY_NAMES[i]} ({cnt}){today}", callback_data=f"corsi_day_{i}")])
+            if i in bookable_days:
+                icon = "🟢"
+                label = "disponibile"
+            else:
+                icon = "🟡"
+                label = "in arrivo"
+            buttons.append([InlineKeyboardButton(
+                f"{icon} {DAY_NAMES[i]} ({cnt} corsi, {label}){today}",
+                callback_data=f"corsi_day_{i}"
+            )])
+
+    # Aggiungi legenda
+    msg += "🟢 disponibile | 🟡 in arrivo (solo auto-booking) | ⚪ nessun corso\n\n"
 
     buttons.append([InlineKeyboardButton("🔄 Ricarica calendario", callback_data="force_refresh")])
     buttons.append([InlineKeyboardButton("🔙 Menu", callback_data="menu_home")])
@@ -182,6 +196,15 @@ async def cb_show_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     msg = f"📅 *{DAY_NAMES[day]}* — {len(courses)} corsi\n\n"
+
+    # Determina se è un giorno prenotabile o in arrivo
+    now_wd = datetime.now().weekday()
+    bookable_days = {(now_wd + d) % 7 for d in range(4)}
+    if day in bookable_days:
+        msg += "🟢 *Corsi prenotabili* — posti disponibili aggiornati in tempo reale\n\n"
+    else:
+        msg += "🟡 *Corsi in arrivo* — non ancora prenotabili.\n"
+        msg += "   Puoi impostare l'*auto-booking*, prenoterò appena disponibili!\n\n"
     buttons = []
 
     # Raggruppa per categoria
