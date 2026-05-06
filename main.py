@@ -143,37 +143,28 @@ def register_all_handlers(app):
 def _print_banner():
     """Stampa il banner di avvio con logo ASCII, versione e funzionalità."""
     banner = r"""
-╔══════════════════════════════════════════════════════════╗
-║                                                          ║
-║   ██╗   ██╗██╗ ██████╗███████╗███╗   ██╗███████╗       ║
-║   ██║   ██║██║██╔════╝██╔════╝████╗  ██║██╔════╝       ║
-║   ██║   ██║██║██║     █████╗  ██╔██╗ ██║█████╗         ║
-║   ╚██╗ ██╔╝██║██║     ██╔══╝  ██║╚██╗██║██╔══╝         ║
-║    ╚████╔╝ ██║╚██████╗███████╗██║ ╚████║███████╗       ║
-║     ╚═══╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═══╝╚══════╝       ║
-║                                                          ║
-║   ███████╗██╗████████╗███╗   ██╗███████╗███████╗       ║
-║   ██╔════╝██║╚══██╔══╝████╗  ██║██╔════╝██╔════╝       ║
-║   █████╗  ██║   ██║   ██╔██╗ ██║█████╗  █████╗         ║
-║   ██╔══╝  ██║   ██║   ██║╚██╗██║██╔══╝  ██╔══╝         ║
-║   ██║     ██║   ██║   ██║ ╚████║██║     ██║            ║
-║   ╚═╝     ╚═╝   ╚═╝   ╚═╝  ╚═══╝╚═╝     ╚═╝            ║
-║                                                          ║
-╠══════════════════════════════════════════════════════════╣
-║  Vicenza Fitness Bot  v1.4.0                        🏋️ ║
-║  Auto-Booking Telegram per WellTeam                 🤖 ║
-╠══════════════════════════════════════════════════════════╣
-║  📅  Prenotazione corsi con calendario interattivo      ║
-║  🤖  Auto-booking settimanale automatico                ║
-║  🔄  Retry intelligente (max 20 tentativi, ogni ora)    ║
-║  🔔  Notifiche Telegram su successo/errore              ║
-║  🎫  QR code per ingresso palestra                      ║
-║  📖  Catalogo offline corsi (JSON)                      ║
-║  🕐  Promemoria 3h/60min prima del corso                ║
-╠══════════════════════════════════════════════════════════╣
-║  MOTD: Ogni ripetizione è un passo verso la grandezza   ║
-║         — Solo chi si allena con costanza arriva lontano ║
-╚══════════════════════════════════════════════════════════╝
+    banner = r"""╔══════════════════════════════════════════════════════════════════════╗
+║   ____  _    _ _______ ____   ____   ____  _  _______ _   _  _____  ║
+║  / __ \| |  | |__   __|  _ \ / __ \ / __ \| |/ /_   _| \ | |/ ____| ║
+║ | |  | | |  | |  | |  | |_) | |  | | |  | | ' /  | | |  \| | |  __  ║
+║ | |  | | |  | |  | |  |  _ <| |  | | |  | |  <   | | | . ` | | |_ | ║
+║ | |__| | |__| |  | |  | |_) | |__| | |__| | . \ _| |_| |\  | |__| | ║
+║  \____/ \____/   |_|  |____/ \____/ \____/|_|\_\_____|_| \_|\_____| ║
+╠══════════════════════════════════════════════════════════════════════╣
+║                         Outbooking Bot  v1.4.0                        ║
+║                   Auto-booking Telegram per WellTeam                  ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  📅  Prenotazione corsi con calendario interattivo                   ║
+║  🤖  Auto-booking settimanale automatico                             ║
+║  🔄  Retry intelligente (max 20 tentativi, ogni ora)                 ║
+║  🔔  Notifiche Telegram su successo/errore                           ║
+║  🎫  QR code per ingresso palestra                                   ║
+║  📖  Catalogo offline corsi (JSON)                                   ║
+║  🕐  Promemoria 3h/60min prima del corso                             ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  MOTD: Ogni ripetizione è un passo verso la grandezza                ║
+║         — Solo chi si allena con costanza arriva lontano             ║
+╚══════════════════════════════════════════════════════════════════════╝"""
 """
     print(banner, flush=True)
 
