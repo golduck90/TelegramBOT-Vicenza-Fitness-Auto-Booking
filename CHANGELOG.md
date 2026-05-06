@@ -16,12 +16,27 @@
 - **A5**: `requests.Session` inizializzato eager (no race condition lazy init)
 - **A8**: `busy_timeout=10000` + try/except su `OperationalError`
 - **A6**: Creata infrastruttura test (`tests/` con 6 test case)
+- **L1**: Input validation su `service_id` da callback
+- **L2**: Notifiche scheduler via `asyncio.run_coroutine_threadsafe()` (no più HTTP diretto)
+- **L3**: Logging strutturato JSON (timestamp, level, logger, message)
+- **L4**: Cache key timezone-safe (ZoneInfo Europe/Rome)
+- **L6**: Python 3.13 → 3.12 (stabilità)
+- **L7**: File logging solo fuori Docker (stdout in container)
+- **L8**: PicklePersistence integrato in SQLite (`bot_persistence` table)
+- **L10**: Rate limit su callback query handlers
 
 ### Changed
 - `README.md` — rimosse migliorie risolte, sezione "Problemi non fixabili" per H5
 - `config.py` — aggiunto logging per sicurezza Fernet key
 - `wellteam.py` — throttle API + session eager init
-- `db.py` — `_LockedConnection` + `get_connection()` pubblico
+- `db.py` — `_LockedConnection` + `get_connection()` pubblico + tabella `bot_persistence`
+- `scheduler.py` — notifiche via application.bot
+- `main.py` — JSON logging + SqlitePersistence
+- `Dockerfile` — python 3.12
+
+### New
+- `persistence.py` — SqlitePersistence (salva stato bot in SQLite)
+- `tests/__init__.py`, `tests/test_db.py`
 
 ## [1.3.0] - 2026-05-06
 

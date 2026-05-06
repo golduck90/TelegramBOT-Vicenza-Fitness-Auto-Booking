@@ -189,6 +189,7 @@ async def _show_corsi(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: 
     await _edit_or_send(update, msg, InlineKeyboardMarkup(buttons))
 
 
+@rate_limit
 async def cb_show_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mostra corsi per un giorno specifico."""
     query = update.callback_query
@@ -290,6 +291,7 @@ async def cb_back_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # PRENOTA UN CORSO (singola o auto)
 # ═══════════════════════════════════════════════════════════
 
+@rate_limit
 async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Utente ha scelto un corso → chiede auto o singola."""
     query = update.callback_query
@@ -306,8 +308,24 @@ async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]))
         return
 
-    service_id = int(parts[0])
-    day = int(parts[1])
+    try:
+        service_id = int(parts[0])
+    except ValueError:
+        await query.edit_message_text("❌ *Dati corso non validi.* Riprova.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")]
+            ]))
+        return
+    try:
+        day = int(parts[1])
+    except ValueError:
+        await query.edit_message_text("❌ *Dati giorno non validi.* Riprova.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")]
+            ]))
+        return
     rest = parts[2].split("|")
     start_time = rest[0]
     instructor = rest[1] if len(rest) > 1 else ""
@@ -360,6 +378,7 @@ async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@rate_limit
 async def cb_book_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Aggiunge all'auto-booking. Se non già prenotato per questa settimana,
     chiede se prenotare subito."""
@@ -569,6 +588,7 @@ async def cb_ab_book_now_no(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@rate_limit
 async def cb_book_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Prenota subito (singola volta)."""
     query = update.callback_query
@@ -756,6 +776,7 @@ async def cmd_prenotazioni(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     await _edit_or_send(update, msg[:4000], InlineKeyboardMarkup(buttons))
 
 
+@rate_limit
 async def cb_cancel_prenotazione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancella una prenotazione."""
     query = update.callback_query

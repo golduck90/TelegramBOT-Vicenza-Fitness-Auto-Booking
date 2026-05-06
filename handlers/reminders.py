@@ -26,6 +26,7 @@ from telegram.constants import ParseMode
 import db
 import wellteam
 import config
+from handlers.decorators import rate_limit
 
 logger = logging.getLogger("reminders")
 
@@ -312,6 +313,7 @@ class ReminderChecker:
 # CALLBACK HANDLER (SI / NO ai pulsanti del reminder)
 # ═══════════════════════════════════════════════════════════
 
+@rate_limit
 async def cb_reminder_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Utente ha premuto 'Sì, partecipo'."""
     query = update.callback_query
@@ -343,6 +345,7 @@ async def cb_reminder_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@rate_limit
 async def cb_reminder_no(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Utente ha premuto 'No, cancella'."""
     query = update.callback_query

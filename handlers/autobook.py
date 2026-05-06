@@ -118,6 +118,7 @@ async def _compute_stats(telegram_id: int, item: dict) -> dict:
     return {"count": count, "last": last, "since": since}
 
 
+@rate_limit
 async def cb_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Attiva/disattiva auto-book item."""
     query = update.callback_query
@@ -151,6 +152,7 @@ async def cb_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+@rate_limit
 async def cb_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Rimuove auto-book item."""
     query = update.callback_query

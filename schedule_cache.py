@@ -7,11 +7,14 @@ delle prossime 2 settimane e la salva in `schedule_cache`.
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
+from zoneinfo import ZoneInfo
 import db
 import wellteam
 import config
 
 logger = logging.getLogger("schedule_cache")
+
+ROME_TZ = ZoneInfo("Europe/Rome")
 
 WEEKDAYS_IT = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
 
@@ -51,7 +54,7 @@ def refresh_schedule(telegram_id: int, auth_token: str,
     Scarica la schedule per un utente per le prossime 2 settimane.
     Salva nella cache divise per settimana.
     """
-    today = datetime.now()
+    today = datetime.now(ROME_TZ)
     # Prossimi 14 giorni
     end_date = today + timedelta(days=14)
 
@@ -72,7 +75,7 @@ def refresh_schedule(telegram_id: int, auth_token: str,
 
     # Raggruppa per settimana
     weeks: Dict[str, list] = {}
-    now = datetime.now()
+    now = datetime.now(ROME_TZ)
     for item in items:
         date_str = item.get("DateLesson", "")[:10]
         try:

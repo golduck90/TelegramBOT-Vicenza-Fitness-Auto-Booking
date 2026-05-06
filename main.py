@@ -13,34 +13,53 @@ from telegram import Update, BotCommand
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ConversationHandler, Defaults,
-    PicklePersistence, PersistenceInput, AIORateLimiter,
+    PersistenceInput, AIORateLimiter,
 )
 from telegram.constants import ParseMode
 import db
 from scheduler import AutoBookScheduler
 from schedule_cache import refresh_all_users
+from persistence import SqlitePersistence
 
 logger = logging.getLogger("bot")
 
 
 def setup_logging():
     level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
-    formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)-5s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
+
+    class JsonFormatter(logging.Formatter):
+        """Custom JSON formatter for structured logging."""
+        def format(self, record):
+            import json
+            log_entry = {
+                "timestamp": self.formatTime(record, "%Y-%m-%d %H:%M:%S"),
+                "level": record.levelname,
+                "logger": record.name,
+                "message": record.getMessage(),
+            }
+            if record.exc_info and record.exc_info[0]:
+                log_entry["exception"] = self.formatException(record.exc_info)
+            return json.dumps(log_entry, ensure_ascii=False)
+
+    formatter = JsonFormatter()
+
     console = logging.StreamHandler()
     console.setFormatter(formatter)
     console.setLevel(level)
-    file_handler = logging.handlers.RotatingFileHandler(
-        config.LOG_FILE, maxBytes=10*1024*1024, backupCount=3
-    )
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(level)
+
+    # In Docker, logging goes to stdout via StreamHandler.
+    # Only add RotatingFileHandler when running outside Docker.
+    if not os.environ.get('DOCKER', '') == 'true' and not os.path.exists('/app/data'):
+        file_handler = logging.handlers.RotatingFileHandler(
+            config.LOG_FILE, maxBytes=10*1024*1024, backupCount=3
+        )
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(level)
     root = logging.getLogger()
     root.setLevel(level)
     root.addHandler(console)
-    root.addHandler(file_handler)
+    if not os.environ.get('DOCKER', '') == 'true' and not os.path.exists('/app/data'):
+        root.addHandler(file_handler)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     return logging.getLogger("bot")
@@ -170,8 +189,7 @@ def main():
     logger.info(f"👤 Utenti attivi: {db.count_active_users()}")
 
     # Crea app Telegram
-    persistence = PicklePersistence(
-        filepath=str(config.DATA_DIR / "bot_state.pickle"),
+    persistence = SqlitePersistence(
         store_data=PersistenceInput(
             user_data=True,
             chat_data=True,

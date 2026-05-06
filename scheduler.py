@@ -12,6 +12,7 @@ Logica:
 3. Se errore non recuperabile (posti esauriti, omaggi terminati...):
    - Notifica subito e non ritenta
 """
+import asyncio
 import logging
 import time
 import threading
@@ -19,10 +20,10 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from zoneinfo import ZoneInfo
 
-import requests
 import db
 import wellteam
 import config
+from telegram.constants import ParseMode
 
 logger = logging.getLogger("scheduler")
 
@@ -90,23 +91,24 @@ class AutoBookScheduler:
     # ── Invio messaggi Telegram (thread-safe) ──────────────────────────
 
     def _send_message(self, telegram_id: int, text: str):
-        """Invia messaggio Telegram dal thread via REST API (sincrono, thread-safe)."""
+        """Invia messaggio Telegram da thread, usando l'event loop del bot."""
         if not self._application:
             logger.warning(f"Applicazione non disponibile, skip messaggio per {telegram_id}")
             return
-        token = getattr(self._application.bot, 'token', None)
-        if not token:
-            logger.warning("Token bot non disponibile, skip messaggio")
-            return
         try:
-            url = f"https://api.telegram.org/bot{token}/sendMessage"
-            resp = requests.post(url, json={
-                "chat_id": telegram_id,
-                "text": text,
-                "parse_mode": "Markdown",
-            }, timeout=15)
-            if resp.status_code != 200:
-                logger.warning(f"Telegram API error for {telegram_id}: HTTP {resp.status_code} {resp.text[:200]}")
+            coro = self._application.bot.send_message(
+                chat_id=telegram_id,
+                text=text,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(coro, loop)
+            else:
+                logger.warning(f"Loop non ancora attivo, skip messaggio per {telegram_id}")
         except Exception as e:
             logger.error(f"Impossibile inviare messaggio a {telegram_id}: {e}")
 

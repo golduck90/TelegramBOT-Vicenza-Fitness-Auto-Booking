@@ -126,15 +126,6 @@ problema non fixabile perché dipende da backend di terzi.
 
 | # | Idea | Priorità |
 |---|------|----------|
-| L1 | Input validation su `service_id` da callback | Bassa |
-| L2 | Notifiche via `application.bot.send_message()` invece di HTTP diretto | Bassa |
-| L3 | Logging strutturato JSON (invece di plain text) | Bassa |
-| L4 | Cache key timezone-safe | Bassa |
-| L6 | Python 3.11/3.12 invece di 3.13 per stabilità | Bassa |
-| L7 | Logging su stdout per Docker | Bassa |
-| L8 | PicklePersistence fuori dall'immagine | Bassa |
-| L9 | `_check_cache` blocca event loop | Bassa |
-| L10 | Rate limit su callback query | Bassa |
 | A7 | CI/CD (GitHub Actions) | Media |
 
 ## ✅ Checklist Produzione

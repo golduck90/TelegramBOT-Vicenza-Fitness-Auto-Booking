@@ -8,6 +8,7 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 import db
+from handlers.decorators import rate_limit
 
 logger = logging.getLogger("bot")
 
@@ -102,6 +103,7 @@ async def cb_menu_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # GESTIONE CORSISTI (aggiornamento cache)
 # ═══════════════════════════════════════════════════════════
 
+@rate_limit
 async def cb_force_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Forza il refresh del calendario."""
     query = update.callback_query

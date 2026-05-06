@@ -164,6 +164,12 @@ def init_db():
 
         CREATE UNIQUE INDEX IF NOT EXISTS idx_reminder_lesson
             ON booking_reminders(telegram_id, lesson_id, lesson_date);
+
+        -- Persistence per python-telegram-bot (sostituisce PicklePersistence)
+        CREATE TABLE IF NOT EXISTS bot_persistence (
+            key     TEXT PRIMARY KEY,
+            value   BLOB
+        );
     """)
     conn.commit()
     _migrate_auto_book_retry(conn)
