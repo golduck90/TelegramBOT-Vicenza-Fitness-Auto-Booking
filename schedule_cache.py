@@ -113,4 +113,12 @@ def refresh_schedule(telegram_id: int, auth_token: str,
         db.save_schedule_cache(telegram_id, deduped, week_key)
 
     logger.info(f"📅 User {telegram_id}: {sum(len(v) for v in weeks.values())} corsi cached in {len(weeks)} settimane")
+
+    # Aggiorna il catalogo locale dei corsi (per visualizzazione offline)
+    try:
+        from course_catalog import update_from_schedule
+        update_from_schedule(items)
+    except Exception as e:
+        logger.warning(f"Errore aggiornamento catalogo corsi: {e}")
+
     return True

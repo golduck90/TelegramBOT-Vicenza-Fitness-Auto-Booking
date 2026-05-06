@@ -131,11 +131,16 @@ async def _show_corsi(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: 
         context.user_data["corsi_mode"] = mode  # Ricorda la modalità
         return
 
-    # Conta per giorno
+    # Conta per giorno dalla cache
     day_count = {}
     for c in cached:
         dw = c["day_of_week"]
         day_count[dw] = day_count.get(dw, 0) + 1
+
+    # Unisci col catalogo offline (per giorni non ancora visibili)
+    from course_catalog import get_all_days_with_courses
+    catalog_days = get_all_days_with_courses()
+    all_days = set(list(day_count.keys()) + list(catalog_days.keys()))
 
     now_wd = datetime.now().weekday()
     # Finestra prenotabile: oggi + 3 giorni (VisibleDays=4)
@@ -146,9 +151,11 @@ async def _show_corsi(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: 
     msg = f"{mode_label}\n\n📆 *Scegli un giorno:*\n\n"
     buttons = []
     for i in range(7):
-        cnt = day_count.get(i, 0)
+        cache_cnt = day_count.get(i, 0)
+        catalog_cnt = catalog_days.get(i, 0)
         today = " ← Oggi" if i == now_wd else ""
-        if cnt > 0:
+        if cache_cnt > 0:
+            # Ha dati live: mostra conteggio reale
             if i in bookable_days:
                 icon = "🟢"
                 label = "disponibile"
@@ -156,12 +163,20 @@ async def _show_corsi(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: 
                 icon = "🟡"
                 label = "in arrivo"
             buttons.append([InlineKeyboardButton(
-                f"{icon} {DAY_NAMES[i]} ({cnt} corsi, {label}){today}",
+                f"{icon} {DAY_NAMES[i]} ({cache_cnt} corsi, {label}){today}",
+                callback_data=f"corsi_day_{i}"
+            )])
+        elif catalog_cnt > 0:
+            # Solo catalogo offline (non ancora visibile dal server)
+            icon = "🟠"
+            label = f"in catalogo ({catalog_cnt})"
+            buttons.append([InlineKeyboardButton(
+                f"{icon} {DAY_NAMES[i]} — {label}{today}",
                 callback_data=f"corsi_day_{i}"
             )])
 
     # Aggiungi legenda
-    msg += "🟢 disponibile | 🟡 in arrivo (solo auto-booking) | ⚪ nessun corso\n\n"
+    msg += "🟢 disponibile | 🟡 in arrivo | 🟠 in catalogo (solo auto-booking)\n\n"
 
     buttons.append([InlineKeyboardButton("🔄 Ricarica calendario", callback_data="force_refresh")])
     buttons.append([InlineKeyboardButton("🔙 Menu", callback_data="menu_home")])
@@ -182,6 +197,24 @@ async def cb_show_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     courses = db.get_cached_schedule_by_day(telegram_id, day, wk)
     if not courses:
         courses = db.get_cached_schedule_by_day(telegram_id, day, _next_week_key())
+
+    if not courses:
+        # Prova dal catalogo offline
+        from course_catalog import get_day_courses
+        catalog_courses = get_day_courses(day)
+        if catalog_courses:
+            courses = []
+            for cc in catalog_courses:
+                courses.append({
+                    "service_id": cc["service_id"],
+                    "description": cc["description"],
+                    "start_time": cc["start_time"],
+                    "end_time": cc["end_time"],
+                    "instructor": cc.get("instructor", ""),
+                    "category": cc.get("category", ""),
+                    "is_mine": False,  # catalogo: nessun dato live
+                    "from_catalog": True,
+                })
 
     if not courses:
         await query.edit_message_text(
@@ -210,7 +243,10 @@ async def cb_show_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Raggruppa per categoria
     cats = {}
     for c in courses:
-        cat = c.get("category") or "Altri"
+        cat = c.get("category") or c.get("CategoryDescription") or "Altri"
+        if c.get("from_catalog"):
+            # Corsi dal catalogo: niente booking diretto
+            cat += " (📖 da catalogo)"
         if cat not in cats:
             cats[cat] = []
         cats[cat].append(c)
