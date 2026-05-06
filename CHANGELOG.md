@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.0] - 2026-05-06
+
+### Fixed
+- **M2**: `_get_conn()` privato → esposto `get_connection()` pubblico
+- **M4**: Rimosso `cb_menu_home` dead code
+- **M5**: `force_refresh` spostato in corsi.py (dov'è usato)
+- **M6**: `app_token` non più sovrascritto ad ogni refresh token
+- **M7**: Log warning su `_last_token_refresh` perso dopo restart
+- **M8**: Security warning se `FERNET_KEY` è file-based (non env var)
+- **M9**: `is_locked`/`lock_user` timezone-aware (UTC con timezone)
+- **A1**: Rimosso tabella legacy `autobook_rules` + 6 funzioni morte
+- **A2**: Aggiunto API rate limiter WellTeam (1 richiesta/secondo)
+- **A3**: `_check_cache` e `cmd_prenotazioni` ora usano `asyncio.to_thread()`
+- **A5**: `requests.Session` inizializzato eager (no race condition lazy init)
+- **A8**: `busy_timeout=10000` + try/except su `OperationalError`
+- **A6**: Creata infrastruttura test (`tests/` con 6 test case)
+
+### Changed
+- `README.md` — rimosse migliorie risolte, sezione "Problemi non fixabili" per H5
+- `config.py` — aggiunto logging per sicurezza Fernet key
+- `wellteam.py` — throttle API + session eager init
+- `db.py` — `_LockedConnection` + `get_connection()` pubblico
+
 ## [1.3.0] - 2026-05-06
 
 ### Added

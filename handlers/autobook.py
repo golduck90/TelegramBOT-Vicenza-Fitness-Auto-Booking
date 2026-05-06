@@ -99,7 +99,7 @@ async def _compute_stats(telegram_id: int, item: dict) -> dict:
             pass
 
     # Quante volte ha prenotato (dal booking_log)
-    conn = db._get_conn()
+    conn = db.get_connection()
     row = conn.execute(
         "SELECT COUNT(*) as cnt FROM booking_log WHERE telegram_id = ? AND action = 'autobook' AND success = 1 AND service_desc = ?",
         (telegram_id, item["description"])

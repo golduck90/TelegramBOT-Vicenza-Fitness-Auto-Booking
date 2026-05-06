@@ -491,6 +491,8 @@ class AutoBookScheduler:
         now = time.time()
 
         last_refresh = self._last_token_refresh.get(telegram_id, 0)
+        if telegram_id not in self._last_token_refresh:
+            logger.warning(f"User {telegram_id}: _last_token_refresh vuoto (cache persa dopo riavvio)")
         if now - last_refresh < TOKEN_REFRESH_COOLDOWN:
             logger.debug(f"User {telegram_id}: refresh token in cooldown ({int(now - last_refresh)}s)")
             return None
@@ -513,7 +515,7 @@ class AutoBookScheduler:
             return None
 
         new_token = result["auth_token"]
-        db.update_tokens(telegram_id, auth_token=new_token, app_token=config.WELLTEAM_APP_TOKEN)
+        db.update_tokens(telegram_id, auth_token=new_token)
         self._last_token_refresh[telegram_id] = now
         logger.info(f"✅ User {telegram_id}: token rinnovato con successo")
         return new_token

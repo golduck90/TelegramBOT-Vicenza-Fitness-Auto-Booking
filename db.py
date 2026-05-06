@@ -3,7 +3,7 @@ Database layer — SQLite con parametri, nessuna injection possibile.
 """
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from cryptography.fernet import Fernet
@@ -21,10 +21,14 @@ def _get_conn() -> sqlite3.Connection:
         raw.row_factory = sqlite3.Row
         raw.execute("PRAGMA journal_mode=WAL")    # Concorrenza
         raw.execute("PRAGMA foreign_keys=ON")      # Integrità
-        raw.execute("PRAGMA busy_timeout=5000")    # Timeout 5s
+        raw.execute("PRAGMA busy_timeout=10000")    # Timeout 10s
         # Wrapper che serializza le commit con _db_lock
         _local.conn = _LockedConnection(raw, _db_lock)
     return _local.conn
+
+
+# Public alias for external modules
+get_connection = _get_conn
 
 
 class _LockedConnection:
@@ -46,7 +50,11 @@ class _LockedConnection:
 
     def _locked_commit(self):
         with object.__getattribute__(self, '_lock'):
-            object.__getattribute__(self, '_conn').commit()
+            try:
+                object.__getattribute__(self, '_conn').commit()
+            except sqlite3.OperationalError as e:
+                import logging
+                logging.getLogger("bot").warning(f"SQLite OperationalError in commit: {e}")
 
 
 def init_db():
@@ -79,22 +87,6 @@ def init_db():
             instructor      TEXT,
             category        TEXT,
             is_favorite     INTEGER DEFAULT 0,
-            created_at      TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS autobook_rules (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            telegram_id     INTEGER NOT NULL,
-            service_id      INTEGER NOT NULL,
-            description     TEXT NOT NULL,
-            instructor      TEXT,
-            day_of_week     INTEGER NOT NULL,  -- 0=Mon ... 6=Sun
-            book_for_day    INTEGER NOT NULL,  -- giorno relativo (0=stesso, 1=giorno dopo, 3=tra 3 gg...)
-            start_time      TEXT NOT NULL,      -- es. "19:00"
-            end_time        TEXT NOT NULL,      -- es. "19:45"
-            is_enabled      INTEGER DEFAULT 1,
-            last_booked     TEXT,
             created_at      TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
         );
@@ -148,7 +140,6 @@ def init_db():
             FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
         );
 
-        CREATE INDEX IF NOT EXISTS idx_autobook_user ON autobook_rules(telegram_id, is_enabled);
         CREATE INDEX IF NOT EXISTS idx_booking_log_user ON booking_log(telegram_id);
         CREATE INDEX IF NOT EXISTS idx_schedule_cache ON schedule_cache(telegram_id, week_key);
         CREATE INDEX IF NOT EXISTS idx_auto_book_user ON auto_book_items(telegram_id, is_active);
@@ -281,7 +272,7 @@ def increment_login_attempts(telegram_id: int) -> int:
 def lock_user(telegram_id: int, minutes: int = 15):
     """Blocca l'utente per N minuti."""
     from datetime import timedelta
-    lock_until = (datetime.utcnow() + timedelta(minutes=minutes)).isoformat()
+    lock_until = (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()
     conn = _get_conn()
     conn.execute(
         "UPDATE users SET locked_until = ? WHERE telegram_id = ?",
@@ -297,7 +288,10 @@ def is_locked(telegram_id: int) -> bool:
     if user and user.get("locked_until"):
         try:
             lock_time = datetime.fromisoformat(user["locked_until"])
-            if datetime.utcnow() < lock_time:
+            # Se il lock_time è naive (senza timezone), rendilo UTC-aware
+            if lock_time.tzinfo is None:
+                lock_time = lock_time.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) < lock_time:
                 return True
         except (ValueError, TypeError):
             pass
@@ -316,7 +310,6 @@ def remove_user(telegram_id: int):
     """Rimuove un utente e tutti i suoi dati."""
     conn = _get_conn()
     conn.execute("DELETE FROM booking_reminders WHERE telegram_id = ?", (telegram_id,))
-    conn.execute("DELETE FROM autobook_rules WHERE telegram_id = ?", (telegram_id,))
     conn.execute("DELETE FROM auto_book_items WHERE telegram_id = ?", (telegram_id,))
     conn.execute("DELETE FROM courses WHERE telegram_id = ?", (telegram_id,))
     conn.execute("DELETE FROM schedule_cache WHERE telegram_id = ?", (telegram_id,))
@@ -374,87 +367,6 @@ def toggle_favorite_course(telegram_id: int, service_id: int) -> bool:
         conn.commit()
         return bool(new_val)
     return False
-
-
-# ═══════════════════════════════════════════════════════════
-# AUTO-BOOKING RULES
-# ═══════════════════════════════════════════════════════════
-
-def add_autobook_rule(telegram_id: int, service_id: int, description: str,
-                       instructor: str, day_of_week: int, book_for_day: int,
-                       start_time: str, end_time: str) -> int:
-    """Aggiunge una regola di auto-booking. Restituisce l'ID."""
-    conn = _get_conn()
-    cur = conn.execute("""
-        INSERT INTO autobook_rules (telegram_id, service_id, description, instructor,
-                                     day_of_week, book_for_day, start_time, end_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (telegram_id, service_id, description, instructor, day_of_week, book_for_day, start_time, end_time))
-    conn.commit()
-    return cur.lastrowid
-
-
-def get_user_autobook_rules(telegram_id: int, enabled_only: bool = False) -> List[Dict]:
-    """Elenco regole auto-booking di un utente."""
-    conn = _get_conn()
-    query = "SELECT * FROM autobook_rules WHERE telegram_id = ?"
-    params = [telegram_id]
-    if enabled_only:
-        query += " AND is_enabled = 1"
-    query += " ORDER BY day_of_week, start_time"
-    rows = conn.execute(query, params).fetchall()
-    return [dict(r) for r in rows]
-
-
-def get_all_enabled_rules() -> List[Dict]:
-    """Tutte le regole attive di tutti gli utenti (per lo scheduler)."""
-    conn = _get_conn()
-    rows = conn.execute("""
-        SELECT r.*, u.auth_token, u.app_token, u.iyes_url, u.company_id, u.username
-        FROM autobook_rules r
-        JOIN users u ON u.telegram_id = r.telegram_id
-        WHERE r.is_enabled = 1 AND u.is_active = 1 AND u.auth_token IS NOT NULL
-    """).fetchall()
-    return [dict(r) for r in rows]
-
-
-def toggle_autobook_rule(rule_id: int, telegram_id: int) -> bool:
-    """Attiva/disattiva una regola. Restituisce il nuovo stato."""
-    conn = _get_conn()
-    row = conn.execute(
-        "SELECT is_enabled FROM autobook_rules WHERE id = ? AND telegram_id = ?",
-        (rule_id, telegram_id)
-    ).fetchone()
-    if row:
-        new_val = 0 if row["is_enabled"] else 1
-        conn.execute(
-            "UPDATE autobook_rules SET is_enabled = ? WHERE id = ?",
-            (new_val, rule_id)
-        )
-        conn.commit()
-        return bool(new_val)
-    return False
-
-
-def remove_autobook_rule(rule_id: int, telegram_id: int) -> bool:
-    """Elimina una regola."""
-    conn = _get_conn()
-    cur = conn.execute(
-        "DELETE FROM autobook_rules WHERE id = ? AND telegram_id = ?",
-        (rule_id, telegram_id)
-    )
-    conn.commit()
-    return cur.rowcount > 0
-
-
-def update_autobook_last_booked(rule_id: int):
-    """Aggiorna il timestamp dell'ultima prenotazione."""
-    conn = _get_conn()
-    conn.execute(
-        "UPDATE autobook_rules SET last_booked = datetime('now') WHERE id = ?",
-        (rule_id,)
-    )
-    conn.commit()
 
 
 # ═══════════════════════════════════════════════════════════

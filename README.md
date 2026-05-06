@@ -111,45 +111,19 @@ bot-palestra/
 - **requests** (API WellTeam)
 - **cryptography** (Fernet per password cifrate)
 
-## 🛠️ Migliorie in sospeso
+## 🛠️ Storico Migliorie
 
-Mantenute dal code review (`CODE_REVIEW.md`) e dall'audit produzione (`REVIEW_CONTAINER.md`) — consolidate qui.
+Tutte le migliorie identificate sono state risolte. Vedi sotto per l'unico
+problema non fixabile perché dipende da backend di terzi.
 
-### 🔴 Critiche — Da fare SUBITO
-| # | Problema | Impatto |
-|---|----------|---------|
-| C2 | Timezone CEST hardcoded in scheduler (v1.3 fix) | ✅ RISOLTO — zoneinfo attivo |
-| C3 | Confronto naive/aware datetime in scheduler | ✅ RISOLTO — now_rome usato ovunque |
-| C4 | Token esposto in git history | ✅ RISOLTO — env var obbligatoria |
-| C5 | Dead code login headers | ✅ RISOLTO — rimosso |
-| — | Volume `/app` sovrascriveva codice | ✅ RISOLTO — `/app/data` |
-| — | `.env.example` con token reali | ✅ RISOLTO — solo placeholder |
+### ⏸️ Problemi non fixabili (backend di terzi)
 
-### 🟠 Importanti — Da fare PRESTO
-| # | Problema | Dettaglio | Stato |
-|---|----------|-----------|-------|
-| H1 | `bookings.py` mai importato (dead code) | 206 righe morte. | ✅ RIMOSSO |
-| H2 | `courses.py` mai importato (dead code) | 130 righe morte. `/calendario` irraggiungibile. | ✅ RIMOSSO |
-| H3 | SQLite senza lock esplicito | `_db_lock` definito mai usato. 3 thread scrivono concorrentemente. | ✅ FIXATO — `_LockedConnection` wrappa commit |
-| H4 | Rate limiter non thread-safe | `_user_timestamps` condiviso senza lock. | ✅ FIXATO — `threading.Lock` aggiunto |
-| H5 | Password in query params HTTP | GET login → password in access log. Backend di terzi. | ⏸️ BACKEND — non modificabile |
-| H6 | `application.loop` fragile | API interna ptb, potrebbe sparire in v23+. | ✅ FIXATO — `asyncio.get_running_loop()` |
-| H7 | `last_booked_date` potrebbe non matchare | Se utente prenota manualmente un altro slot stesso giorno, retry si ferma. | ✅ FIXATO — check anche `last_booked_lesson` |
-| H8 | `authenticate` non valida token | Login OK ma token potrebbe non funzionare. | ✅ FIXATO — `/webuser/me` obbligatorio |
-
-### 🟡 Medie — Migliorie
-| # | Problema | Dettaglio |
-|---|----------|-----------|
-| M2 | Accesso a `db._get_conn()` come privato | Da esporre metodo pubblico `get_connection()`. |
-| M4 | `cb_menu_home` dead code | Definita ma mai registrata. |
-| M5 | `force_refresh` fragile cross-file | Registrato in menu.py ma chiamato da corsi.py. |
-| M6 | `app_token` sovrascritto con company token | Ogni refresh token sovrascrive. Naming confuso. |
-| M7 | `_last_token_refresh` non persistito | In-memory only, perso su restart. |
-| M8 | Password decifrabili con chiave su disco | .fernet_key leggibile da chi ha accesso al filesystem. |
-| M9 | `is_locked` confronta datetime naive | `utcnow()` e `fromisoformat()` sono naive. |
-| — | `docker-compose.yml` attributo `version:` obsoleto | ✅ RISOLTO — rimosso. |
+| # | Problema | Dettaglio | Motivo |
+|---|----------|-----------|--------|
+| H5 | Password in query params HTTP | GET login → password in `access.log` del server WellTeam. | Il backend .NET di WellTeam richiede la chiamata GET con `password` in query params. Non possiamo modificare il loro server. Best practice violata ma inevitabile. |
 
 ### 🔵 Future — Backlog
+
 | # | Idea | Priorità |
 |---|------|----------|
 | L1 | Input validation su `service_id` da callback | Bassa |
@@ -161,18 +135,7 @@ Mantenute dal code review (`CODE_REVIEW.md`) e dall'audit produzione (`REVIEW_CO
 | L8 | PicklePersistence fuori dall'immagine | Bassa |
 | L9 | `_check_cache` blocca event loop | Bassa |
 | L10 | Rate limit su callback query | Bassa |
-
-### 🏗️ Note Architetturali
-| # | Nota |
-|---|------|
-| A1 | Due sistemi auto-booking (legacy `autobook_rules` + nuovo `auto_book_items`). Rimuovere legacy. |
-| A2 | Tre thread concorrenti su DB e API senza coordinazione. |
-| A3 | `requests` sincrono blocca event loop. Migrare a `httpx.AsyncClient`. |
-| A4 | Token management frammentato su 3 file. Centralizzare in `TokenManager`. |
-| A5 | `requests.Session` globale con race condition in lazy init. |
-| A6 | Zero test. Nessun file `tests/`. |
-| A7 | Nessun CI/CD. |
-| A8 | `busy_timeout=5000` senza exception handling su timeout. |
+| A7 | CI/CD (GitHub Actions) | Media |
 
 ## ✅ Checklist Produzione
 

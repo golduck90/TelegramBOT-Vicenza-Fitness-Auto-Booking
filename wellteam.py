@@ -3,26 +3,39 @@ WellTeam API Client — thread-safe con refresh automatico dei token.
 """
 import requests
 import logging
+import threading
+import time
 from typing import Optional, Dict, List, Any, Tuple
 from datetime import datetime, timedelta
 import config
 
 logger = logging.getLogger("wellteam")
 
-# Sessioni requests separate per thread (connessioni riutilizzabili)
-_session = None
+# API rate limiter: max 1 request per second
+_api_lock = threading.Lock()
+_last_api_call = 0.0
+
+
+def _throttle():
+    """Sleep if less than 1 second since the last API call."""
+    global _last_api_call
+    with _api_lock:
+        elapsed = time.time() - _last_api_call
+        if elapsed < 1.0:
+            time.sleep(1.0 - elapsed)
+        _last_api_call = time.time()
+
+# Sessioni requests inizializzata eager (thread-safe, no lazy init race)
+_session = requests.Session()
+_session.headers.update({
+    "User-Agent": "okhttp/4.10.0",
+    "Accept-Encoding": "gzip",
+    "Accept-Language": "it",
+})
 
 
 def _get_session() -> requests.Session:
-    """Restituisce una session requests thread-safe."""
-    global _session
-    if _session is None:
-        _session = requests.Session()
-        _session.headers.update({
-            "User-Agent": "okhttp/4.10.0",
-            "Accept-Encoding": "gzip",
-            "Accept-Language": "it",
-        })
+    """Restituisce la session requests globale."""
     return _session
 
 
@@ -35,6 +48,7 @@ def authenticate(username: str, password: str, company_id: int = None) -> Option
     Esegue il login su WellTeam.
     Restituisce dict con auth_token, app_token, user_id oppure None.
     """
+    _throttle()
     if company_id is None:
         company_id = config.WELLTEAM_COMPANY_ID
 
@@ -132,6 +146,7 @@ def _headers(auth_token: str, app_token: str = "", iyes_url: str = "") -> Dict:
 def get_my_books(auth_token: str, app_token: str = "", iyes_url: str = "",
                  company_id: int = 2) -> Tuple[bool, Any]:
     """Elenco prenotazioni attive."""
+    _throttle()
     sess = _get_session()
     try:
         r = sess.get(
@@ -152,6 +167,7 @@ def get_my_books(auth_token: str, app_token: str = "", iyes_url: str = "",
 def get_services(auth_token: str, app_token: str = "", iyes_url: str = "",
                  company_id: int = 2) -> Tuple[bool, Any]:
     """Elenco servizi/corsi disponibili."""
+    _throttle()
     sess = _get_session()
     try:
         r = sess.get(
@@ -188,6 +204,7 @@ def get_schedule(auth_token: str, app_token: str = "", iyes_url: str = "",
     if not end_date:
         end_date = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d")
 
+    _throttle()
     sess = _get_session()
     body = {
         "CompanyID": company_id,
@@ -217,6 +234,7 @@ def book_course(auth_token: str, app_token: str, iyes_url: str,
                 lesson_id: int, service_id: int, start_time: str, end_time: str,
                 book_nr: int = 1, note: str = "") -> Tuple[bool, str]:
     """Prenota un corso."""
+    _throttle()
     sess = _get_session()
     body = {
         "BookNr": book_nr,
@@ -247,6 +265,7 @@ def book_course(auth_token: str, app_token: str, iyes_url: str,
 def cancel_course(auth_token: str, app_token: str, iyes_url: str,
                   booking_id: int, lesson_id: int, start_time: str, end_time: str) -> Tuple[bool, str]:
     """Cancella una prenotazione."""
+    _throttle()
     sess = _get_session()
     body = {
         "BookingID": booking_id,
@@ -274,6 +293,7 @@ def cancel_course(auth_token: str, app_token: str, iyes_url: str,
 
 def get_qr_code(auth_token: str, app_token: str = "", iyes_url: str = "") -> Tuple[bool, str]:
     """Ottiene il codice QR per l'ingresso."""
+    _throttle()
     sess = _get_session()
     try:
         r = sess.get(
@@ -292,6 +312,7 @@ def get_qr_code(auth_token: str, app_token: str = "", iyes_url: str = "") -> Tup
 
 def get_my_status(auth_token: str, app_token: str = "", iyes_url: str = "") -> Tuple[bool, Any]:
     """Stato utente (abbonamento, certificato medico)."""
+    _throttle()
     sess = _get_session()
     try:
         r = sess.get(

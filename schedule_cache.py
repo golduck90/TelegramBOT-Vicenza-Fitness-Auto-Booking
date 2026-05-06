@@ -21,7 +21,7 @@ def refresh_all_users() -> int:
     Scansiona tutti gli utenti attivi, scarica e cache la schedule.
     Restituisce il numero di utenti aggiornati.
     """
-    conn = db._get_conn()
+    conn = db.get_connection()
     rows = conn.execute("""
         SELECT telegram_id, auth_token, COALESCE(iyes_url, '') as iyes_url
         FROM users

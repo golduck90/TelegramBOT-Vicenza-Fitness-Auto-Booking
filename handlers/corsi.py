@@ -5,6 +5,7 @@ Handler: Lista Corsi e Prenotazione.
 📅 Prenota → scegli corso → auto o singola prenotazione
 """
 import logging
+import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
@@ -12,6 +13,7 @@ import db
 import wellteam
 import config
 from handlers.decorators import require_auth, rate_limit
+from handlers.menu import cb_force_refresh
 
 logger = logging.getLogger("bot")
 
@@ -107,7 +109,10 @@ async def _check_cache(telegram_id):
         from schedule_cache import refresh_schedule
         user = db.get_user(telegram_id)
         if user:
-            refresh_schedule(telegram_id, user["auth_token"], user.get("iyes_url", "") or config.WELLTEAM_IYES_URL)
+            await asyncio.to_thread(
+                refresh_schedule, telegram_id, user["auth_token"],
+                user.get("iyes_url", "") or config.WELLTEAM_IYES_URL
+            )
             cached = db.get_cached_schedule(telegram_id, _week_key())
             if not cached:
                 cached = db.get_cached_schedule(telegram_id, _next_week_key())
@@ -704,7 +709,8 @@ async def cb_book_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_prenotazioni(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict):
     """Mostra prenotazioni attive."""
     telegram_id = update.effective_user.id
-    success, books = wellteam.get_my_books(
+    success, books = await asyncio.to_thread(
+        wellteam.get_my_books,
         user["auth_token"],
         app_token=config.WELLTEAM_APP_TOKEN,
         iyes_url=user.get("iyes_url", "") or config.WELLTEAM_IYES_URL,
@@ -840,6 +846,7 @@ def register(app):
     app.add_handler(CallbackQueryHandler(cb_cancel_prenotazione, pattern=r"^cancel_\d+$"))
     app.add_handler(CallbackQueryHandler(cb_ab_book_now_yes, pattern="^ab_book_now_yes$"))
     app.add_handler(CallbackQueryHandler(cb_ab_book_now_no, pattern="^ab_book_now_no$"))
+    app.add_handler(CallbackQueryHandler(cb_force_refresh, pattern="^force_refresh$"))
 
     # Comandi / menu callback
     app.add_handler(CallbackQueryHandler(cmd_lista_corsi, pattern="^menu_corsi$"))

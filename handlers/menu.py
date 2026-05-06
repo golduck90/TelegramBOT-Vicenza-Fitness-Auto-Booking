@@ -61,12 +61,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=kb)
 
 
-async def cb_menu_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Callback: torna al menu principale."""
-    # Reinserisce update come se fosse un /start
-    update.callback_query = update.callback_query
-    await cmd_start(update, context)
-
 
 # ═══════════════════════════════════════════════════════════
 # INFO BOT
@@ -183,6 +177,5 @@ def register(app):
     # Callback router
     app.add_handler(CallbackQueryHandler(cmd_start, pattern="^menu_home$"))
     app.add_handler(CallbackQueryHandler(cb_menu_info, pattern="^menu_info$"))
-    app.add_handler(CallbackQueryHandler(cb_force_refresh, pattern="^force_refresh$"))
 
     logger.info("🏠 Menu registrato (pre/post login)")

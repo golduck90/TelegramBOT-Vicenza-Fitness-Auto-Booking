@@ -5,6 +5,7 @@ Carica tutto da variabili d'ambiente con fallback safe.
 Non hardcodare MAI token sensibili qui dentro.
 """
 import os
+import logging
 from pathlib import Path
 
 # ── Percorsi ──────────────────────────────────────────────
@@ -49,6 +50,8 @@ def get_fernet_key() -> bytes:
 
     # 2) File .fernet_key
     if FERNET_KEY_FILE.exists():
+        logger = logging.getLogger("bot")
+        logger.warning(f"⚠️ FERNET_KEY file-based: {FERNET_KEY_FILE}. Per security, set FERNET_KEY env var.")
         return FERNET_KEY_FILE.read_bytes()
 
     # 3) Genera e salva
