@@ -4,5 +4,7 @@ __pycache__
 .gitignore
 .env
 .env.example
+*.md
 bot.log
 .DS_Store
+docs/
