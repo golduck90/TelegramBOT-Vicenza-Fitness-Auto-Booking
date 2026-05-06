@@ -149,8 +149,24 @@ def init_db():
             ON booking_reminders(telegram_id, lesson_id, lesson_date);
     """)
     conn.commit()
+    _migrate_auto_book_retry(conn)
     # Genera chiave Fernet al primo avvio (trigger lato config)
     config.get_fernet_key()
+
+
+def _migrate_auto_book_retry(conn):
+    """Aggiunge colonne retry a auto_book_items se mancanti."""
+    try:
+        conn.execute("SELECT retry_count FROM auto_book_items LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.executescript("""
+            ALTER TABLE auto_book_items ADD COLUMN retry_count     INTEGER DEFAULT 0;
+            ALTER TABLE auto_book_items ADD COLUMN retry_error     TEXT;
+            ALTER TABLE auto_book_items ADD COLUMN retry_next_at   TEXT;
+            ALTER TABLE auto_book_items ADD COLUMN retry_notified  INTEGER DEFAULT 0;
+        """)
+        conn.commit()
+        logging.getLogger("bot").info("✅ Colonne retry aggiunte a auto_book_items")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -618,10 +634,65 @@ def update_auto_book_last_booked(item_id: int, lesson_id: int, lesson_date: str)
     conn = _get_conn()
     conn.execute("""
         UPDATE auto_book_items
-        SET last_booked_lesson = ?, last_booked_date = ?
+        SET last_booked_lesson = ?, last_booked_date = ?,
+            retry_count = 0, retry_error = NULL,
+            retry_next_at = NULL, retry_notified = 0
         WHERE id = ?
     """, (lesson_id, lesson_date, item_id))
     conn.commit()
+
+
+def setup_auto_book_retry(item_id: int, error_msg: str, retry_hours: int = 1):
+    """Imposta retry per un item dopo un errore recuperabile."""
+    conn = _get_conn()
+    from datetime import datetime, timedelta
+    next_at = (datetime.now() + timedelta(hours=retry_hours)).strftime("%Y-%m-%dT%H:%M:%S")
+    conn.execute("""
+        UPDATE auto_book_items
+        SET retry_count = retry_count + 1,
+            retry_error = ?,
+            retry_next_at = ?
+        WHERE id = ?
+    """, (error_msg, next_at, item_id))
+    conn.commit()
+
+
+def mark_auto_book_retry_notified(item_id: int):
+    """Segna che l'utente è già stato avvisato del retry."""
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE auto_book_items SET retry_notified = 1 WHERE id = ?",
+        (item_id,)
+    )
+    conn.commit()
+
+
+def reset_auto_book_retry(item_id: int):
+    """Resetta stato retry (dopo successo o abbandono)."""
+    conn = _get_conn()
+    conn.execute("""
+        UPDATE auto_book_items
+        SET retry_count = 0, retry_error = NULL,
+            retry_next_at = NULL, retry_notified = 0
+        WHERE id = ?
+    """, (item_id,))
+    conn.commit()
+
+
+def get_items_needing_retry() -> List[Dict]:
+    """Restituisce item con retry in sospeso e scaduto."""
+    conn = _get_conn()
+    from datetime import datetime
+    now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    rows = conn.execute("""
+        SELECT a.*, u.auth_token, u.iyes_url, u.company_id, u.username
+        FROM auto_book_items a
+        JOIN users u ON u.telegram_id = a.telegram_id
+        WHERE a.is_active = 1 AND u.is_active = 1 AND u.auth_token IS NOT NULL
+          AND a.retry_count > 0 AND a.retry_next_at IS NOT NULL
+          AND a.retry_next_at <= ? AND a.retry_count < 20
+    """, (now,)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def is_course_in_cache(telegram_id: int, service_id: int, day_of_week: int,

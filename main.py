@@ -159,8 +159,8 @@ def main():
     # Registra handler
     register_all_handlers(app)
 
-    # Scheduler auto-booking (ogni notte 00:10 Roma)
-    scheduler = AutoBookScheduler()
+    # Scheduler auto-booking (ogni notte 00:10 Roma + retry ogni ora)
+    scheduler = AutoBookScheduler(application=app)
     scheduler.start()
 
     # Reminder checker (ogni ora a :05 e :35)

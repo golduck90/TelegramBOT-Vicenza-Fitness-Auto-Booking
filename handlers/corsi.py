@@ -416,13 +416,15 @@ async def cb_book_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lesson_id = lesson.get("IDLesson") or 0
     date = (lesson.get("DateLesson") or "")[:10]
     if not date:
-        # Fallback: estrai da StartTime
         st = lesson.get("StartTime", "")
         date = st[:10] if len(st) >= 10 else datetime.now().strftime("%Y-%m-%d")
     bs = lesson.get("StartTime", "")
-    bs = bs[:19] if len(bs) > 19 else f"{date}T{bs}"
+    # FIX: API restituisce "1900-01-01THH:MM:SS" (19 char). Estrai solo HH:MM:SS.
+    bs_time = bs[11:19] if len(bs) >= 19 and "1900-01-01" in bs else bs
+    bs = f"{date}T{bs_time}" if bs_time else bs
     be = lesson.get("EndTime", "")
-    be = be[:19] if len(be) > 19 else f"{date}T{be}"
+    be_time = be[11:19] if len(be) >= 19 and "1900-01-01" in be else be
+    be = f"{date}T{be_time}" if be_time else be
 
     ok, msg = wellteam.book_course(
         auth_token=user["auth_token"],

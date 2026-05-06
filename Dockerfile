@@ -2,11 +2,17 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install system deps: sqlite3 + qrencode CLI tool
+# Install system deps + timezone
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     sqlite3 \
     qrencode \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
+
+# Set timezone to Europe/Rome at OS level
+ENV TZ=Europe/Rome
+RUN ln -snf /usr/share/zoneinfo/Europe/Rome /etc/localtime && \
+    echo "Europe/Rome" > /etc/timezone
 
 # Copy requirements and install Python packages
 COPY requirements.txt .
