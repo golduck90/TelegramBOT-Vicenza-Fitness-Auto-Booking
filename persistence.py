@@ -120,16 +120,17 @@ class SqlitePersistence(BasePersistence):
         self._save_blob(f"conversations:{name}", conv)
 
     # ── Refresh methods (no-op, data always up to date in DB) ────
+    # PTB v20.7+ calls these with keyword args (full dicts)
 
-    async def refresh_user_data(self, user_id: int, data: dict) -> None:
+    async def refresh_user_data(self, user_id: int, user_data: dict) -> None:
         """No-op: data is always up to date in DB."""
         pass
 
-    async def refresh_chat_data(self, chat_id: int, data: dict) -> None:
+    async def refresh_chat_data(self, chat_id: int, chat_data: dict) -> None:
         """No-op: data is always up to date in DB."""
         pass
 
-    async def refresh_bot_data(self, data: dict) -> None:
+    async def refresh_bot_data(self, bot_data: dict) -> None:
         """No-op: data is always up to date in DB."""
         pass
 
