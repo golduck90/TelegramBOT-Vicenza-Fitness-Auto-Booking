@@ -122,29 +122,13 @@ problema non fixabile perché dipende da backend di terzi.
 |---|----------|-----------|--------|
 | H5 | Password in query params HTTP | GET login → password in `access.log` del server WellTeam. | Il backend .NET di WellTeam richiede la chiamata GET con `password` in query params. Non possiamo modificare il loro server. Best practice violata ma inevitabile. |
 
-### 🔵 Future — Backlog
-
-| # | Idea | Priorità |
-|---|------|----------|
-| A7 | CI/CD (GitHub Actions) | Media |
-
-## ✅ TODO Checklist
+## ✅ Forse un giorno verranno implementate
 
 Tutto risolto ✅ — il progetto è pronto per pubblicazione.
 
 | # | Requisito | Stato |
 |---|-----------|-------|
-| 1 | Dockerfile con utente non-root | ✅ |
-| 2 | Healthcheck su servizio | ✅ |
-| 3 | Resource limits CPU/RAM | ✅ |
-| 4 | Named volumes per dati persistenti | ✅ |
-| 5 | `.env` separato + `.env.example` pulito | ✅ |
-| 6 | `restart: unless-stopped` | ✅ |
-| 7 | README.md + CHANGELOG.md | ✅ |
-| 8 | Makefile | ✅ |
-| 9 | Secreti rimossi dalla git history | ✅ |
-| 10 | Licenza GPL v3 | ✅ |
-| 11 | CI/CD (GitHub Actions) | ❌ Futuro |
+| 1 | CI/CD (GitHub Actions) | ❌ Futuro |
 
 ## 📜 Storico
 
