@@ -46,8 +46,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Cosa vuoi fare?"
         )
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📋 Lista Corsi", callback_data="menu_corsi"),
-             InlineKeyboardButton("📅 Prenota", callback_data="menu_prenota")],
+            [InlineKeyboardButton("📅 Prenota", callback_data="menu_prenota")],
             [InlineKeyboardButton("🎫 QR Code", callback_data="qr_genera"),
              InlineKeyboardButton("🤖 Auto-Booking", callback_data="menu_autobook")],
             [InlineKeyboardButton("ℹ️ Info", callback_data="menu_info"),
@@ -142,7 +141,7 @@ async def cb_force_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ *Calendario aggiornato!*\n\nOra puoi navigare i corsi.",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📋 Lista Corsi", callback_data="menu_corsi")],
+                [InlineKeyboardButton("📅 Scegli un corso", callback_data="menu_prenota")],
                 [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")],
             ])
         )

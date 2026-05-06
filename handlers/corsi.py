@@ -208,8 +208,6 @@ async def cb_show_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "*Tocca un corso per prenotarlo o impostare auto-booking.*"
 
     nav = [
-        [InlineKeyboardButton("📋 Solo Visualizzazione", callback_data="menu_corsi"),
-         InlineKeyboardButton("📅 Prenota", callback_data="menu_prenota")],
         [InlineKeyboardButton("🔙 Giorni", callback_data="corsi_back_days"),
          InlineKeyboardButton("🏠 Menu", callback_data="menu_home")],
     ]
@@ -292,7 +290,6 @@ async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🤖 Prenota automaticamente ogni settimana", callback_data="book_do_auto")],
-            [InlineKeyboardButton("📅 Prenota solo questa volta", callback_data="book_do_now")],
             [InlineKeyboardButton("🔙 Indietro", callback_data=f"corsi_day_{day}")],
             [InlineKeyboardButton("🏠 Menu", callback_data="menu_home")],
         ])
@@ -300,7 +297,8 @@ async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cb_book_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Aggiunge all'auto-booking."""
+    """Aggiunge all'auto-booking. Se non già prenotato per questa settimana,
+    chiede se prenotare subito."""
     query = update.callback_query
     await query.answer()
     telegram_id = query.from_user.id
@@ -312,17 +310,109 @@ async def cb_book_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]))
         return
 
+    # 1) Aggiungi all'auto-booking
+    description = c["description"]
     item_id = db.add_auto_book_item(
-        telegram_id, c["service_id"], c["description"],
+        telegram_id, c["service_id"], description,
         c["day"], c["start_time"], c["end_time"], c.get("instructor", "")
     )
 
+    # 2) Calcola la prossima data per questo giorno della settimana
+    from datetime import datetime, timedelta
+    today = datetime.now()
+    target_date = today + timedelta(days=(c["day"] - today.weekday()) % 7)
+    if target_date <= today:
+        target_date += timedelta(days=7)
+    date_str = target_date.strftime("%Y-%m-%d")
+
+    # 3) Recupera il calendario per quella data
+    user = db.get_user(telegram_id)
+    if not user or not user.get("auth_token"):
+        # Conferma auto-booking e basta
+        await _confirm_autobook(query, c, item_id, description)
+        return
+
+    import wellteam, config
+    success, lessons = wellteam.get_schedule(
+        auth_token=user["auth_token"],
+        app_token=config.WELLTEAM_APP_TOKEN,
+        iyes_url=user.get("iyes_url", "") or config.WELLTEAM_IYES_URL,
+        start_date=date_str,
+        end_date=date_str,
+    )
+
+    if not success or not lessons:
+        await _confirm_autobook(query, c, item_id, description,
+                                extra=f"\n\n📅 {date_str} — calendario non disponibile, proverò al prossimo ciclo.")
+        return
+
+    # 4) Trova la lezione corrispondente
+    start_wanted = c["start_time"][:5]
+    instructor_wanted = c.get("instructor", "").lower()
+    lesson = None
+    for les in lessons:
+        if les.get("IDServizio") != c["service_id"]:
+            continue
+        les_start = les.get("StartTime", "")[11:16] if len(les.get("StartTime", "")) > 16 else les.get("StartTime", "")
+        if les_start != start_wanted:
+            continue
+        if instructor_wanted and instructor_wanted not in les.get("AdditionalInfo", "").lower():
+            continue
+        lesson = les
+        break
+
+    if not lesson:
+        await _confirm_autobook(query, c, item_id, description,
+                                extra=f"\n\n📅 {date_str} — corso non trovato nel calendario, proverò al prossimo ciclo.")
+        return
+
+    # 5) Controlla stato prenotazione
+    if lesson.get("IsUserPresent"):
+        await _confirm_autobook(query, c, item_id, description,
+                                extra=f"\n\n✅ Sei già prenotato per {date_str}!")
+        return
+
+    if lesson.get("AvailablePlaces", 1) == 0:
+        await _confirm_autobook(query, c, item_id, description,
+                                extra=f"\n\n⏳ Posti esauriti per {date_str}. Riproverò al prossimo ciclo!")
+        return
+
+    # 6) Posto disponibile e non prenotato → chiedi se prenotare subito
+    context.user_data["ab_booking"] = {
+        "lesson_id": lesson["IDLesson"],
+        "service_id": c["service_id"],
+        "start_time": c["start_time"],
+        "end_time": c["end_time"],
+        "date": date_str,
+        "description": description,
+        "item_id": item_id,
+        "instructor": c.get("instructor", ""),
+    }
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Sì, prenota ora", callback_data="ab_book_now_yes")],
+        [InlineKeyboardButton("❌ No, dalla prossima settimana", callback_data="ab_book_now_no")],
+        [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")],
+    ])
     await query.edit_message_text(
-        f"✅ *Aggiunto all'auto-booking!* 🆔 #{item_id}\n\n"
-        f"🏋️ *{c['description']}*\n"
+        f"🤖 *Auto-booking attivato!* 🆔 #{item_id}\n\n"
+        f"🏋️ *{description}*\n"
+        f"📅 {DAY_NAMES[c['day']]} — {c['start_time'][:5]}\n\n"
+        f"🎯 C'è un posto disponibile per *{date_str}*!\n"
+        f"*Vuoi prenotarlo subito?*",
+        parse_mode="Markdown",
+        reply_markup=kb,
+    )
+
+
+async def _confirm_autobook(query, c, item_id, description, extra=""):
+    """Conferma che l'auto-booking è stato attivato."""
+    await query.edit_message_text(
+        f"✅ *Auto-booking attivato!* 🆔 #{item_id}\n\n"
+        f"🏋️ *{description}*\n"
         f"📅 {DAY_NAMES[c['day']]} — {c['start_time'][:5]}\n\n"
         f"🤖 Lo prenoterò ogni settimana appena disponibile!\n"
-        f"Controllo automatico ogni notte alle 00:10.",
+        f"⏰ Controllo automatico ogni notte alle 00:10.{extra}",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🤖 Gestisci auto-booking", callback_data="menu_autobook")],
@@ -330,6 +420,89 @@ async def cb_book_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
     )
     context.user_data.pop("book_course", None)
+
+
+async def cb_ab_book_now_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Prenota subito dopo che l'utente ha detto sì."""
+    query = update.callback_query
+    await query.answer()
+    d = context.user_data.get("ab_booking")
+    if not d:
+        await query.edit_message_text("❌ *Sessione scaduta.*", parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")],
+            ]))
+        return
+
+    await query.edit_message_text("🔄 *Prenoto...*", parse_mode="Markdown")
+
+    user = db.get_user(query.from_user.id)
+    import wellteam, config
+    bs = f"{d['date']}T{d['start_time']}:00"
+    be = f"{d['date']}T{d['end_time']}:00"
+
+    ok, msg = wellteam.book_course(
+        auth_token=user["auth_token"],
+        app_token=config.WELLTEAM_APP_TOKEN,
+        iyes_url=user.get("iyes_url", "") or config.WELLTEAM_IYES_URL,
+        lesson_id=d["lesson_id"],
+        service_id=d["service_id"],
+        start_time=bs,
+        end_time=be,
+    )
+
+    db.log_booking(query.from_user.id, d["description"], d["lesson_id"], bs, "book", ok, msg)
+
+    if ok:
+        # Segna come prenotato anche nell'auto-booking
+        db.update_auto_book_last_booked(d["item_id"], d["lesson_id"], d["date"])
+        text = (
+            f"✅ *Prenotato!*\n\n"
+            f"🏋️ *{d['description']}*\n"
+            f"📅 {d['date']} alle {d['start_time'][:5]}\n"
+            f"{'👤 ' + d['instructor'] if d.get('instructor') else ''}\n\n"
+            f"🎉 L'auto-booking prenoterà automaticamente le prossime settimane!"
+        )
+    else:
+        from handlers.corsi import _friendly_error
+        text = (
+            f"❌ *Prenotazione non riuscita*\n\n"
+            f"🏋️ *{d['description']}*\n"
+            f"📅 {d['date']} alle {d['start_time'][:5]}\n\n"
+            f"Motivo: _{_friendly_error(msg)}_\n\n"
+            f"🤖 L'auto-booking è comunque attivo 🆔 #{d['item_id']}, "
+            f"proverà al prossimo ciclo!"
+        )
+
+    context.user_data.pop("ab_booking", None)
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🤖 Gestisci auto-booking", callback_data="menu_autobook")],
+            [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")],
+        ])
+    )
+
+
+async def cb_ab_book_now_no(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Utente dice no a prenotazione immediata."""
+    query = update.callback_query
+    await query.answer()
+    d = context.user_data.get("ab_booking")
+    if d:
+        context.user_data.pop("ab_booking", None)
+
+    await query.edit_message_text(
+        f"✅ *Auto-booking attivato!* 🆔 #{d.get('item_id', '?') if d else '?'}\n\n"
+        f"🤖 Prenoterò automaticamente dalla prossima settimana disponibile!\n"
+        f"⏰ Controllo ogni notte alle 00:10.",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🤖 Gestisci auto-booking", callback_data="menu_autobook")],
+            [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")],
+        ])
+    )
 
 
 async def cb_book_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -606,6 +779,8 @@ def register(app):
     app.add_handler(CallbackQueryHandler(cb_book_auto, pattern="^book_do_auto$"))
     app.add_handler(CallbackQueryHandler(cb_book_now, pattern="^book_do_now$"))
     app.add_handler(CallbackQueryHandler(cb_cancel_prenotazione, pattern=r"^cancel_\d+$"))
+    app.add_handler(CallbackQueryHandler(cb_ab_book_now_yes, pattern="^ab_book_now_yes$"))
+    app.add_handler(CallbackQueryHandler(cb_ab_book_now_no, pattern="^ab_book_now_no$"))
 
     # Comandi / menu callback
     app.add_handler(CallbackQueryHandler(cmd_lista_corsi, pattern="^menu_corsi$"))
