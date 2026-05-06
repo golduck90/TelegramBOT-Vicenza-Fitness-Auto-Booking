@@ -121,8 +121,48 @@ def register_all_handlers(app):
     logger.info("✅ Tutti gli handler registrati")
 
 
+def _print_banner():
+    """Stampa il banner di avvio con logo ASCII, versione e funzionalità."""
+    banner = r"""
+╔══════════════════════════════════════════════════════════╗
+║                                                          ║
+║   ██╗   ██╗██╗ ██████╗███████╗███╗   ██╗███████╗       ║
+║   ██║   ██║██║██╔════╝██╔════╝████╗  ██║██╔════╝       ║
+║   ██║   ██║██║██║     █████╗  ██╔██╗ ██║█████╗         ║
+║   ╚██╗ ██╔╝██║██║     ██╔══╝  ██║╚██╗██║██╔══╝         ║
+║    ╚████╔╝ ██║╚██████╗███████╗██║ ╚████║███████╗       ║
+║     ╚═══╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═══╝╚══════╝       ║
+║                                                          ║
+║   ███████╗██╗████████╗███╗   ██╗███████╗███████╗       ║
+║   ██╔════╝██║╚══██╔══╝████╗  ██║██╔════╝██╔════╝       ║
+║   █████╗  ██║   ██║   ██╔██╗ ██║█████╗  █████╗         ║
+║   ██╔══╝  ██║   ██║   ██║╚██╗██║██╔══╝  ██╔══╝         ║
+║   ██║     ██║   ██║   ██║ ╚████║██║     ██║            ║
+║   ╚═╝     ╚═╝   ╚═╝   ╚═╝  ╚═══╝╚═╝     ╚═╝            ║
+║                                                          ║
+╠══════════════════════════════════════════════════════════╣
+║  Vicenza Fitness Bot  v5.0                          🏋️ ║
+║  Auto-Booking Telegram per WellTeam                 🤖 ║
+╠══════════════════════════════════════════════════════════╣
+║  📅  Prenotazione corsi con calendario interattivo      ║
+║  🤖  Auto-booking settimanale automatico                ║
+║  🔄  Retry intelligente (max 20 tentativi, ogni ora)    ║
+║  🔔  Notifiche Telegram su successo/errore              ║
+║  🎫  QR code per ingresso palestra                      ║
+║  📖  Catalogo offline corsi (JSON)                      ║
+║  🕐  Promemoria 3h/60min prima del corso                ║
+╠══════════════════════════════════════════════════════════╣
+║  MOTD: Ogni ripetizione è un passo verso la grandezza   ║
+║         — Solo chi si allena con costanza arriva lontano ║
+╚══════════════════════════════════════════════════════════╝
+"""
+    print(banner)
+
+
 def main():
+    _print_banner()
     logger = setup_logging()
+    logger.info("🚀 Avvio bot...")
 
     # Init database (crea tabelle se necessario)
     db.init_db()
