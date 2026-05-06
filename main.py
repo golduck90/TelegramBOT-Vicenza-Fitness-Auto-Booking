@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🏋️ Vicenza Fitness Bot — v5.0
+🏋️ Vicenza Fitness Bot — v1.4.0
 
 Solo auto-booking. Pre-login: solo Login. Post-login: 3 bottoni.
 """
@@ -160,7 +160,7 @@ def _print_banner():
 ║   ╚═╝     ╚═╝   ╚═╝   ╚═╝  ╚═══╝╚═╝     ╚═╝            ║
 ║                                                          ║
 ╠══════════════════════════════════════════════════════════╣
-║  Vicenza Fitness Bot  v5.0                          🏋️ ║
+║  Vicenza Fitness Bot  v1.4.0                        🏋️ ║
 ║  Auto-Booking Telegram per WellTeam                 🤖 ║
 ╠══════════════════════════════════════════════════════════╣
 ║  📅  Prenotazione corsi con calendario interattivo      ║
