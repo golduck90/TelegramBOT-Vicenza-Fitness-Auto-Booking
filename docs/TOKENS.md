@@ -1,18 +1,12 @@
 # 🗝️ WellTeam APPTOKEN — Vicenza Fitness
 
-> ⚠️ **ATTENZIONE**: Questo file contiene token aziendali reali.
-> Equivalgono a password. Non condividerli, non esporli.
+> ⚠️ **ATTENZIONE**: Questo file è un riferimento, non contiene token reali.
+> I token vanno inseriti nel file `.env` locale (vedi `.env.example`).
 
-Questo file raccoglie i **company-level APPTOKEN** necessari per
-autenticarsi all'API WellTeam di Vicenza Fitness.
+Questo file documenta come ottenere il **company-level APPTOKEN** necessario
+per autenticarsi all'API WellTeam di Vicenza Fitness.
 
-## Token attivi
-
-| Nome | Valore | Note |
-|------|--------|------|
-| `WELLTEAM_APP_TOKEN` | `WELLTEAM_APP_TOKEN_RIMOSSO` | Token company-level originale (da APK decompilato) |
-
-## Come ottenere un nuovo token (se serve)
+## Come ottenere il token
 
 1. Decomprimi l'APK ufficiale WellTeam: `apktool d WellTeam.apk`
 2. Cerca in `res/values/strings.xml` la stringa `app_token` o `AppToken`
@@ -20,10 +14,20 @@ autenticarsi all'API WellTeam di Vicenza Fitness.
 
 ## Come usarlo
 
-Copia `.env.example` → `.env` e inserisci il token:
-
-```env
-WELLTEAM_APP_TOKEN=2AEAC60F19EF...
+```bash
+cp .env.example .env
+# Inserisci i token reali in .env
 ```
 
-Il bot carica il token automaticamente all'avvio.
+Variabili richieste in `.env`:
+
+| Variabile | Descrizione |
+|-----------|-------------|
+| `TELEGRAM_BOT_TOKEN` | Token del bot Telegram (da @BotFather) |
+| `WELLTEAM_APP_TOKEN` | Company-level token WellTeam (da APK decompilato) |
+
+## Note
+
+- Il token è salvato solo nel `.env` locale (`.gitignore` lo esclude)
+- Non committare MAI `.env` su GitHub
+- Se il token viene esposto, rigenerarlo dall'APK
