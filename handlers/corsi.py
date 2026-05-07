@@ -286,7 +286,7 @@ async def cb_show_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if c["dot"] == "🟢":
             instr = f" 👤{c['instructor']}" if c.get("instructor") else ""
-            spots = f" ({c['live_avail']}/{c['live_total']})" if c.get("live_avail") is not None else ""
+            spots = f" ({c['live_avail']}/{c['live_total']})" if c.get("live_avail") is not None and not c.get("is_mine") else ""
             btn_label = f"{c['dot']} {ore} {c['description']}{instr}{spots}{booked}"
         else:
             btn_label = f"{c['dot']} {ore} {c['description']}"
