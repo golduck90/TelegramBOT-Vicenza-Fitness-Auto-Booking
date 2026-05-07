@@ -147,6 +147,46 @@ def register_all_handlers(app):
     logger.info("✅ Tutti gli handler registrati")
 
 
+def _backfill_booking_reminders(app):
+    """
+    Backfill iniziale: popola booking_reminders per prenotazioni già esistenti.
+    Chiama get_my_books() UNA SOLA VOLTA per ogni utente all'avvio.
+    """
+    import wellteam
+    users = db.get_all_active_users_for_reminders()
+    count = 0
+    for user in users:
+        try:
+            success, books = wellteam.get_my_books(
+                auth_token=user["auth_token"],
+                app_token=config.WELLTEAM_APP_TOKEN,
+                iyes_url=user.get("iyes_url", "") or config.WELLTEAM_IYES_URL,
+                company_id=user.get("company_id", 2),
+            )
+            if not success or not books:
+                continue
+            for book in books:
+                lesson_id = book.get("IDLesson")
+                start_str = book.get("StartTime", "")
+                if not lesson_id or not start_str or len(start_str) < 16:
+                    continue
+                lesson_date = start_str[:10]
+                start_time = start_str[11:16]
+                course_name = book.get("ServiceDescription", "Corso")
+                instructor = book.get("AdditionalInfo", "")
+                db.upsert_booking_reminder(
+                    user["telegram_id"], lesson_id, lesson_date,
+                    start_time, course_name, instructor,
+                )
+                count += 1
+        except Exception as e:
+            logger.error(f"Backfill user {user['telegram_id']}: {e}")
+    if count:
+        logger.info(f"♻️ Backfill: {count} reminder creati da prenotazioni esistenti")
+    else:
+        logger.info("♻️ Backfill: nessuna prenotazione esistente trovata")
+
+
 def _print_banner():
     """Stampa il banner di avvio con logo ASCII, versione e funzionalità."""
     banner = r"""╔════════════════════════════════════════════════════════════════════════════════╗
@@ -221,6 +261,12 @@ def main():
     reminder_checker.start()
 
     # Refresh catalogo già fatto in post_init — non serve thread separato
+
+    # Backfill: popola booking_reminders per prenotazioni già esistenti
+    try:
+        _backfill_booking_reminders(app)
+    except Exception as e:
+        logger.error(f"⚠️ Backfill booking_reminders fallito: {e}")
 
     # Avvia bot
     webhook_url = os.environ.get("TELEGRAM_WEBHOOK_URL", "").strip()

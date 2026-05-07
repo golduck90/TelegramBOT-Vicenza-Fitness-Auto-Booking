@@ -665,3 +665,31 @@ def get_reminder_by_lesson_id(lesson_id: int, telegram_id: int) -> Optional[Dict
         (lesson_id, telegram_id)
     ).fetchone()
     return dict(row) if row else None
+
+
+def get_pending_reminders() -> List[Dict]:
+    """Restituisce tutti i reminder ancora da processare (60min non ancora inviato)."""
+    conn = _get_conn()
+    rows = conn.execute("""
+        SELECT * FROM booking_reminders
+        WHERE reminder_60m_sent = 0
+        ORDER BY lesson_date, start_time
+    """).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_booking_reminder(reminder_id: int):
+    """Elimina un reminder."""
+    conn = _get_conn()
+    conn.execute("DELETE FROM booking_reminders WHERE id = ?", (reminder_id,))
+    conn.commit()
+
+
+def delete_booking_reminder_by_lesson(telegram_id: int, lesson_id: int):
+    """Elimina un reminder per lezione specifica."""
+    conn = _get_conn()
+    conn.execute(
+        "DELETE FROM booking_reminders WHERE telegram_id = ? AND lesson_id = ?",
+        (telegram_id, lesson_id)
+    )
+    conn.commit()

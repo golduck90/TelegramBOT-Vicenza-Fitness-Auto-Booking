@@ -48,10 +48,11 @@ PHONE_VF = "+39 0444 276 206"
 
 class ReminderChecker:
     """
-    Thread checker che ogni ora a :05 e :35:
-    1. Ottiene tutti gli utenti attivi
-    2. Per ognuno, chiama get_my_books
-    3. Controlla ogni prenotazione e invia reminder appropriati
+    Thread checker che ogni 5 minuti controlla il DB locale (booking_reminders).
+
+    NO chiamate API nel loop principale.
+    Solo quando sta per inviare un reminder fa UNA chiamata API
+    per verificare che la prenotazione sia ancora attiva su WellTeam.
     """
 
     def __init__(self, application):
@@ -64,14 +65,13 @@ class ReminderChecker:
         if self._running:
             return
         self._running = True
-        # Acquisisce l'event loop principale (per invio messaggi da thread)
         try:
             self._app_loop = asyncio.get_running_loop()
         except RuntimeError:
             self._app_loop = None
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
-        logger.info(f"✅ ReminderChecker avviato (check ogni {CHECK_EVERY_N_MINUTES} minuti)")
+        logger.info(f"✅ ReminderChecker avviato (check ogni {CHECK_EVERY_N_MINUTES} minuti, NO API flooding)")
 
     def stop(self):
         self._running = False
@@ -90,102 +90,97 @@ class ReminderChecker:
             time.sleep(SLEEP_SECONDS)
 
     def _check_all(self):
-        """Scansiona tutti gli utenti attivi e processa le loro prenotazioni."""
-        users = db.get_all_active_users_for_reminders()
-        for user in users:
-            try:
-                self._check_user(user)
-            except Exception as e:
-                logger.error(f"Errore check reminder user {user['telegram_id']}: {e}")
-
-    def _check_user(self, user: dict):
-        """Processa le prenotazioni di un singolo utente."""
-        telegram_id = user["telegram_id"]
-        auth_token = user["auth_token"]
-        iyes_url = user.get("iyes_url", "") or config.WELLTEAM_IYES_URL
-        company_id = user.get("company_id", 2)
-
-        success, books = wellteam.get_my_books(
-            auth_token=auth_token,
-            app_token=config.WELLTEAM_APP_TOKEN,
-            iyes_url=iyes_url,
-            company_id=company_id,
-        )
-
-        if not success or not books:
+        """Legge i reminder dal DB locale — ZERO chiamate API."""
+        reminders = db.get_pending_reminders()
+        if not reminders:
             return
-
         now = datetime.now()
-
-        for book in books:
+        for reminder in reminders:
             try:
-                self._process_booking(telegram_id, book, now, user)
+                self._process_reminder(reminder, now)
             except Exception as e:
-                logger.error(f"Errore processando booking {book.get('IDLesson')}: {e}")
+                logger.error(f"Errore processando reminder #{reminder['id']}: {e}")
 
-    def _process_booking(self, telegram_id: int, book: dict, now: datetime, user: dict):
+    def _process_reminder(self, reminder: dict, now: datetime):
         """
-        Processa una singola prenotazione.
+        Processa un reminder: controlla finestra temporale e,
+        solo se deve inviare, verifica con API live.
         """
-        lesson_id = book.get("IDLesson")
-        if not lesson_id:
-            return
+        reminder_id = reminder["id"]
+        telegram_id = reminder["telegram_id"]
+        lesson_date = reminder["lesson_date"]
+        start_time = reminder["start_time"]
 
-        start_str = book.get("StartTime", "")
-        if not start_str or len(start_str) < 16:
-            return
-
-        lesson_date = start_str[:10]         # "2026-05-06"
-        start_time_iso = start_str[11:16]    # "19:00"
-        course_name = book.get("ServiceDescription", "Corso")
-        instructor = book.get("AdditionalInfo", "")
-
-        # Parsing data/ora lezione
         try:
-            lesson_dt = datetime.strptime(f"{lesson_date} {start_time_iso}", "%Y-%m-%d %H:%M")
+            lesson_dt = datetime.strptime(f"{lesson_date} {start_time}", "%Y-%m-%d %H:%M")
         except ValueError:
-            logger.warning(f"User {telegram_id}: impossibile parsare data {start_str}")
             return
 
-        # La lezione è nel passato? Salta
+        # Lezione passata → pulisci
         if lesson_dt < now:
+            db.delete_booking_reminder(reminder_id)
+            logger.debug(f"Reminder #{reminder_id}: lezione passata, rimosso")
             return
 
-        # Calcola minuti mancanti
         minutes_until = (lesson_dt - now).total_seconds() / 60.0
 
-        # Crea o aggiorna il reminder nel DB
-        reminder_id = db.upsert_booking_reminder(
-            telegram_id, lesson_id, lesson_date,
-            start_time_iso, course_name, instructor,
-        )
-
-        # Recupera lo stato corrente
-        reminder = db.get_booking_reminder(telegram_id, lesson_id, lesson_date)
-        if not reminder:
-            return
-
-        # ── Reminder 3h: chiedi conferma (solo se non ancora inviato) ──
+        # ── REMINDER 3H (60 < minuti <= 180) ──
         if THRESHOLD_60M < minutes_until <= THRESHOLD_3H and not reminder["reminder_3h_sent"]:
+            # 🔍 VERIFICA LIVE prima di inviare
+            exists, user = self._verify_booking(telegram_id, reminder["lesson_id"])
+            if not exists:
+                logger.info(f"Reminder #{reminder_id}: prenotazione non più attiva su WellTeam, rimosso")
+                db.delete_booking_reminder(reminder_id)
+                return
+
+            # ✅ Ancora prenotato → invia reminder
             self._send_3h_reminder(telegram_id, reminder)
             db.mark_reminder_3h_sent(reminder_id)
+            return
 
-        # ── Messaggio 60min: se non c'è stata risposta ──
-        elif minutes_until <= THRESHOLD_60M and reminder["reminder_3h_sent"] and not reminder["reminder_60m_sent"]:
-            # Se l'utente non ha risposto → messaggio 60min
+        # ── MESSAGGIO 60MIN (minuti <= 60, 3h già inviato) ──
+        if minutes_until <= THRESHOLD_60M and reminder["reminder_3h_sent"] and not reminder["reminder_60m_sent"]:
             if reminder["user_response"] is None:
                 self._send_60m_message(telegram_id, reminder)
                 db.mark_reminder_60m_sent(reminder_id)
-            # Se l'utente ha risposto SÌ → butta un "buon allenamento" se non ancora fatto
             elif reminder["user_response"] == "yes":
-                if not reminder["reminder_60m_sent"]:
-                    self._send_good_workout(telegram_id, reminder)
-                    db.mark_reminder_60m_sent(reminder_id)
+                self._send_good_workout(telegram_id, reminder)
+                db.mark_reminder_60m_sent(reminder_id)
 
-    # ── Metodi di invio messaggi (thread-safe via asyncio.run_coroutine_threadsafe) ──
+    def _verify_booking(self, telegram_id: int, lesson_id: int) -> tuple:
+        """
+        Chiamata API live per verificare che una specifica prenotazione
+        sia ancora attiva. Restituisce (esiste, user_dict).
+        Se l'API fallisce, assume ancora prenotato (meglio un falso positivo).
+        """
+        user = db.get_user(telegram_id)
+        if not user or not user.get("auth_token"):
+            return False, None
+
+        try:
+            success, books = wellteam.get_my_books(
+                auth_token=user["auth_token"],
+                app_token=config.WELLTEAM_APP_TOKEN,
+                iyes_url=user.get("iyes_url", "") or config.WELLTEAM_IYES_URL,
+                company_id=user.get("company_id", 2),
+            )
+        except Exception as e:
+            logger.error(f"Errore API verify per user {telegram_id}: {e}")
+            return True, user  # Fallback safe: manda comunque reminder
+
+        if not success or not books:
+            logger.warning(f"Verify booking: get_my_books fallito per user {telegram_id}")
+            return True, user  # Fallback safe
+
+        for book in books:
+            if book.get("IDLesson") == lesson_id:
+                return True, user  # ✅ Ancora prenotato
+
+        return False, user  # ❌ Non più prenotato
+
+    # ── Metodi di invio messaggi (thread-safe) ──
 
     def _send_message(self, telegram_id: int, text: str, reply_markup=None):
-        """Invia un messaggio Telegram da thread, usando l'event loop del bot."""
         try:
             coro = self._application.bot.send_message(
                 chat_id=telegram_id,
@@ -201,7 +196,6 @@ class ReminderChecker:
             logger.error(f"Impossibile inviare messaggio a {telegram_id}: {e}")
 
     def _edit_message(self, telegram_id: int, message_id: int, text: str, reply_markup=None):
-        """Modifica un messaggio esistente."""
         try:
             coro = self._application.bot.edit_message_text(
                 chat_id=telegram_id,
@@ -216,7 +210,6 @@ class ReminderChecker:
             logger.error(f"Impossibile editare messaggio per {telegram_id}: {e}")
 
     def _send_3h_reminder(self, telegram_id: int, reminder: dict):
-        """Invia il reminder 3h con pulsanti SI/NO."""
         course_name = reminder["course_name"]
         lesson_date = reminder["lesson_date"]
         start_time = reminder["start_time"]
@@ -247,7 +240,6 @@ class ReminderChecker:
         logger.info(f"📬 Reminder 3h inviato a {telegram_id}: {course_name} ({lesson_date} {start_time})")
 
     def _send_60m_message(self, telegram_id: int, reminder: dict):
-        """Invia messaggio <60 min: confermato, solo telefono per disdire."""
         course_name = reminder["course_name"]
         lesson_date = reminder["lesson_date"]
         start_time = reminder["start_time"]
@@ -271,7 +263,6 @@ class ReminderChecker:
         logger.info(f"📬 Messaggio 60min inviato a {telegram_id}: {course_name}")
 
     def _send_good_workout(self, telegram_id: int, reminder: dict):
-        """Invia messaggio di buon allenamento (risposta SI)."""
         course_name = reminder["course_name"]
         lesson_date = reminder["lesson_date"]
         start_time = reminder["start_time"]
@@ -287,7 +278,6 @@ class ReminderChecker:
         logger.info(f"📬 Buon allenamento inviato a {telegram_id}: {course_name}")
 
     def _send_cancelled(self, telegram_id: int, reminder: dict):
-        """Invia messaggio di prenotazione cancellata (risposta NO)."""
         course_name = reminder["course_name"]
         lesson_date = reminder["lesson_date"]
         start_time = reminder["start_time"]
@@ -434,6 +424,7 @@ async def cb_reminder_no(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if ok:
         db.log_booking(telegram_id, course_name, lesson_id, start_iso, "cancel", True, msg)
+        db.delete_booking_reminder_by_lesson(telegram_id, lesson_id)
         await query.edit_message_text(
             f"🗑️ *Prenotazione cancellata!*\n\n"
             f"🏋️ *{course_name}*\n"

@@ -342,6 +342,10 @@ class AutoBookScheduler:
             # ✅ SUCCESSO
             db.update_auto_book_last_booked(item_id, lesson_id, date)
             db.log_booking(telegram_id, description, lesson_id, bs, "autobook", True, msg)
+            db.upsert_booking_reminder(
+                telegram_id, lesson_id, date, start_time,
+                description, item.get("instructor", ""),
+            )
             self._notify_retry_success(item, attempt, date)
             logger.info(f"✅ AUTO-BOOK RETRY #{item_id}: {description} il {date} (tentativo {attempt}/{MAX_RETRY})")
         else:
@@ -465,6 +469,10 @@ class AutoBookScheduler:
             logger.info(f"✅ AUTO-BOOK #{item_id}: {item['description']} il {date} alle {start_time}")
             db.update_auto_book_last_booked(item_id, lesson_id, date)
             db.log_booking(telegram_id, item["description"], lesson_id, bs, "autobook", True, msg)
+            db.upsert_booking_reminder(
+                telegram_id, lesson_id, date, start_time,
+                item["description"], item.get("instructor", ""),
+            )
             self._notify_success(item, date)
         else:
             logger.warning(f"❌ AUTO-BOOK #{item_id} FALLITO: {item['description']}: {msg}")

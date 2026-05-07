@@ -611,6 +611,11 @@ async def cb_ab_book_now_yes(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if ok:
         db.update_auto_book_last_booked(d["item_id"], d["lesson_id"], d["date"])
+        # Salva nei reminder per attivare il check 3h/60min
+        db.upsert_booking_reminder(
+            query.from_user.id, d["lesson_id"], d["date"],
+            d["start_time"][:5], d["description"], d.get("instructor", ""),
+        )
         text = (
             f"✅ *Prenotato!*\n\n"
             f"🏋️ *{d['description']}*\n"
@@ -773,6 +778,11 @@ async def cb_book_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
         )
         db.log_booking(telegram_id, c["description"], lesson_id, bs, "book", True, msg)
+        # Salva nei reminder per attivare il check 3h/60min
+        db.upsert_booking_reminder(
+            telegram_id, lesson_id, date,
+            c["start_time"][:5], c["description"], c.get("instructor", ""),
+        )
     else:
         friendly_msg = _friendly_error(msg)
         await query.edit_message_text(
@@ -905,6 +915,7 @@ async def cb_cancel_prenotazione(update: Update, context: ContextTypes.DEFAULT_T
             ])
         )
         db.log_booking(telegram_id, cancel_data["desc"], cancel_data["lesson_id"], cancel_data["start_time"], "cancel", True, msg)
+        db.delete_booking_reminder_by_lesson(telegram_id, cancel_data["lesson_id"])
     else:
         friendly_msg = _friendly_error(msg)
         await query.edit_message_text(
