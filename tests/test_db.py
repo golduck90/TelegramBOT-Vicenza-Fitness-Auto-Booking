@@ -38,7 +38,6 @@ class TestDatabase:
             "booking_log",
             "booking_reminders",
             "courses",
-            "schedule_cache",
             "users",
         ]
         for t in expected_tables:

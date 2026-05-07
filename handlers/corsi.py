@@ -71,11 +71,17 @@ async def _edit_or_send(update, text, reply_markup=None):
 # ═══════════════════════════════════════════════════════════
 
 async def _ensure_catalog_updated(telegram_id: int):
-    """Assicura che il catalogo sia popolato, forza refresh se vuoto."""
+    """Assicura che il catalogo sia popolato, forza refresh se vuoto, con retry."""
     from course_catalog import get_course_count
     if get_course_count() > 0:
         return True  # catalogo già popolato
-    return await _force_catalog_refresh(telegram_id)
+    # Primo tentativo
+    ok = await _force_catalog_refresh(telegram_id)
+    if not ok:
+        logger.warning("Primo refresh catalogo fallito, riprovo...")
+        await asyncio.sleep(2)
+        ok = await _force_catalog_refresh(telegram_id)
+    return ok
 
 
 async def _force_catalog_refresh(telegram_id: int) -> bool:
@@ -207,12 +213,8 @@ async def cb_show_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     live_index = {}
     if is_bookable:
-        # Calcola la data target per questo giorno della settimana
-        offset = (day - now_wd) % 7
-        target = datetime.now() + timedelta(days=offset)
-        if offset > 0 and target <= datetime.now():  # skip se non è oggi ed è passato
-            target += timedelta(days=7)
-        date_str = target.strftime("%Y-%m-%d")
+        from course_catalog import next_date_for_weekday
+        date_str = next_date_for_weekday(day)
         user = db.get_user(telegram_id)
         if user and user.get("auth_token"):
             live_items = await _fetch_live_schedule(
@@ -301,7 +303,7 @@ async def cb_show_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔙 Giorni", callback_data="corsi_back_days"),
          InlineKeyboardButton("🏠 Menu", callback_data="menu_home")],
     ]
-    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(nav + buttons))
+    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons + nav))
 
 
 async def cb_back_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -390,12 +392,8 @@ async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today = datetime.now()
 
     if user and user.get("auth_token"):
-        # Calcola la prossima data per questo giorno
-        offset = (day - today.weekday()) % 7
-        target = today + timedelta(days=offset)
-        if offset > 0 and target <= today:  # skip se non è oggi ed è passato
-            target += timedelta(days=7)
-        date_str = target.strftime("%Y-%m-%d")
+        from course_catalog import next_date_for_weekday
+        date_str = next_date_for_weekday(day)
 
         success, lessons = wellteam.get_schedule(
             auth_token=user["auth_token"],
@@ -482,12 +480,8 @@ async def cb_book_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     # 2) Calcola la prossima data per questo giorno della settimana
-    today = datetime.now()
-    offset = (c["day"] - today.weekday()) % 7
-    target_date = today + timedelta(days=offset)
-    if offset > 0 and target_date <= today:  # skip se non è oggi ed è passato
-        target_date += timedelta(days=7)
-    date_str = target_date.strftime("%Y-%m-%d")
+    from course_catalog import next_date_for_weekday
+    date_str = next_date_for_weekday(c["day"])
 
     # 3) Recupera il calendario per quella data
     user = db.get_user(telegram_id)

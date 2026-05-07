@@ -2,6 +2,7 @@
 Database layer — SQLite con parametri, nessuna injection possibile.
 """
 import sqlite3
+import logging
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -104,25 +105,6 @@ def init_db():
             FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
         );
 
-        -- Cache del calendario settimanale (aggiornato ogni notte)
-        CREATE TABLE IF NOT EXISTS schedule_cache (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            telegram_id     INTEGER NOT NULL,
-            lesson_id       INTEGER NOT NULL,
-            service_id      INTEGER NOT NULL,
-            description     TEXT NOT NULL,
-            day_of_week     INTEGER NOT NULL,  -- 0=Lun 6=Dom
-            lesson_date     TEXT NOT NULL,      -- YYYY-MM-DD
-            start_time      TEXT NOT NULL,      -- HH:MM
-            end_time        TEXT NOT NULL,      -- HH:MM
-            instructor      TEXT,
-            category        TEXT,
-            is_mine         INTEGER DEFAULT 0, -- già prenotato?
-            week_key        TEXT NOT NULL,      -- "2026-W19"
-            cached_at       TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
-        );
-
         -- Iscrizioni auto-booking (nuovo sistema)
         CREATE TABLE IF NOT EXISTS auto_book_items (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -141,7 +123,6 @@ def init_db():
         );
 
         CREATE INDEX IF NOT EXISTS idx_booking_log_user ON booking_log(telegram_id);
-        CREATE INDEX IF NOT EXISTS idx_schedule_cache ON schedule_cache(telegram_id, week_key);
         CREATE INDEX IF NOT EXISTS idx_auto_book_user ON auto_book_items(telegram_id, is_active);
 
         -- Stato reminder prenotazioni (3h / 60min)
@@ -173,21 +154,16 @@ def init_db():
     """)
     conn.commit()
     _migrate_auto_book_retry(conn)
+    _migrate_drop_schedule_cache(conn)
     # Genera chiave Fernet al primo avvio (trigger lato config)
     config.get_fernet_key()
 
 
-def _migrate_schedule_cache_places(conn):
-    """Aggiunge colonne available_places/total_places se mancanti."""
-    try:
-        conn.execute("SELECT available_places FROM schedule_cache LIMIT 1")
-    except sqlite3.OperationalError:
-        conn.executescript("""
-            ALTER TABLE schedule_cache ADD COLUMN available_places INTEGER DEFAULT NULL;
-            ALTER TABLE schedule_cache ADD COLUMN total_places INTEGER DEFAULT NULL;
-        """)
-        conn.commit()
-        logging.getLogger("bot").info("✅ Colonne available_places/total_places aggiunte a schedule_cache")
+def _migrate_drop_schedule_cache(conn):
+    """Rimuove la tabella schedule_cache (ormai sostituita da course_catalog.json)."""
+    conn.execute("DROP TABLE IF EXISTS schedule_cache")
+    conn.commit()
+    logging.getLogger("bot").info("🗑️ Tabella schedule_cache rimossa (sostituita da course_catalog.json)")
 
 
 def _migrate_auto_book_retry(conn):
@@ -331,7 +307,6 @@ def remove_user(telegram_id: int):
     conn.execute("DELETE FROM booking_reminders WHERE telegram_id = ?", (telegram_id,))
     conn.execute("DELETE FROM auto_book_items WHERE telegram_id = ?", (telegram_id,))
     conn.execute("DELETE FROM courses WHERE telegram_id = ?", (telegram_id,))
-    conn.execute("DELETE FROM schedule_cache WHERE telegram_id = ?", (telegram_id,))
     conn.execute("DELETE FROM booking_log WHERE telegram_id = ?", (telegram_id,))
     conn.execute("DELETE FROM users WHERE telegram_id = ?", (telegram_id,))
     conn.commit()
@@ -412,89 +387,6 @@ def get_booking_history(telegram_id: int, limit: int = 20) -> List[Dict]:
         ORDER BY created_at DESC
         LIMIT ?
     """, (telegram_id, limit)).fetchall()
-    return [dict(r) for r in rows]
-
-
-# ═══════════════════════════════════════════════════════════
-# SCHEDULE CACHE (calendario notturno)
-# ═══════════════════════════════════════════════════════════
-
-def clear_schedule_cache(telegram_id: int, week_key: str = None):
-    """Svuota la cache per un utente (opzionalmente solo una settimana)."""
-    conn = _get_conn()
-    if week_key:
-        conn.execute(
-            "DELETE FROM schedule_cache WHERE telegram_id = ? AND week_key = ?",
-            (telegram_id, week_key)
-        )
-    else:
-        conn.execute(
-            "DELETE FROM schedule_cache WHERE telegram_id = ?",
-            (telegram_id,)
-        )
-    conn.commit()
-
-
-def save_schedule_cache(telegram_id: int, items: List[Dict], week_key: str):
-    """Salva il calendario nella cache. Sostituisce la settimana se già esiste."""
-    conn = _get_conn()
-    # Svuota solo questa settimana
-    conn.execute(
-        "DELETE FROM schedule_cache WHERE telegram_id = ? AND week_key = ?",
-        (telegram_id, week_key)
-    )
-    for item in items:
-        start = item.get("StartTime", "")
-        end = item.get("EndTime", "")
-        conn.execute("""
-            INSERT INTO schedule_cache
-                (telegram_id, lesson_id, service_id, description,
-                 day_of_week, lesson_date, start_time, end_time,
-                 instructor, category, is_mine, week_key)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            telegram_id,
-            item.get("IDLesson"),
-            item.get("IDServizio"),
-            item.get("ServiceDescription", ""),
-            item.get("DayOfWeek", 0),
-            item.get("DateLesson", "")[:10] if item.get("DateLesson") else "",
-            start[11:16] if len(start) > 16 else start,
-            end[11:16] if len(end) > 16 else end,
-            item.get("AdditionalInfo", ""),
-            item.get("CategoryDescription", ""),
-            1 if item.get("IsUserPresent") else 0,
-            week_key,
-        ))
-    conn.commit()
-
-
-def get_cached_schedule(telegram_id: int, week_key: str = None) -> List[Dict]:
-    """Recupera il calendario dalla cache. Se week_key è None, prende la prossima."""
-    if not week_key:
-        from datetime import datetime
-        week_key = datetime.now().strftime("%Y-W%W")
-    conn = _get_conn()
-    rows = conn.execute("""
-        SELECT * FROM schedule_cache
-        WHERE telegram_id = ? AND week_key = ?
-        ORDER BY day_of_week, start_time
-    """, (telegram_id, week_key)).fetchall()
-    return [dict(r) for r in rows]
-
-
-def get_cached_schedule_by_day(telegram_id: int, day_of_week: int,
-                                week_key: str = None) -> List[Dict]:
-    """Corsi di un giorno specifico dalla cache."""
-    if not week_key:
-        from datetime import datetime
-        week_key = datetime.now().strftime("%Y-W%W")
-    conn = _get_conn()
-    rows = conn.execute("""
-        SELECT * FROM schedule_cache
-        WHERE telegram_id = ? AND week_key = ? AND day_of_week = ?
-        ORDER BY start_time
-    """, (telegram_id, week_key, day_of_week)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -665,19 +557,6 @@ def get_items_needing_retry() -> List[Dict]:
     return [dict(r) for r in rows]
 
 
-def is_course_in_cache(telegram_id: int, service_id: int, day_of_week: int,
-                        start_time: str, instructor: str = "") -> bool:
-    """Verifica se un corso esiste nella cache per evitare iscrizioni a corsi spariti."""
-    conn = _get_conn()
-    row = conn.execute("""
-        SELECT 1 FROM schedule_cache
-        WHERE telegram_id = ? AND service_id = ?
-          AND day_of_week = ? AND start_time = ?
-          AND COALESCE(instructor,'') = COALESCE(?,'')
-        LIMIT 1
-    """, (telegram_id, service_id, day_of_week, start_time, instructor)).fetchone()
-    return row is not None
-
 
 # ═══════════════════════════════════════════════════════════
 # STATS
@@ -686,13 +565,14 @@ def is_course_in_cache(telegram_id: int, service_id: int, day_of_week: int,
 def get_bot_stats() -> dict:
     """Restituisce statistiche del bot per il messaggio di benvenuto."""
     conn = _get_conn()
+    from course_catalog import get_course_count
     return {
         "active_users": conn.execute("SELECT COUNT(*) as cnt FROM users WHERE is_active = 1").fetchone()["cnt"],
         "total_autobook_items": conn.execute("SELECT COUNT(*) as cnt FROM auto_book_items").fetchone()["cnt"],
         "active_autobook_items": conn.execute("SELECT COUNT(*) as cnt FROM auto_book_items WHERE is_active = 1").fetchone()["cnt"],
         "autobook_success": conn.execute("SELECT COUNT(*) as cnt FROM booking_log WHERE action='autobook' AND success=1").fetchone()["cnt"],
         "book_success": conn.execute("SELECT COUNT(*) as cnt FROM booking_log WHERE action='book' AND success=1").fetchone()["cnt"],
-        "courses_in_cache": conn.execute("SELECT COUNT(DISTINCT service_id) as cnt FROM schedule_cache").fetchone()["cnt"],
+        "courses_in_cache": get_course_count(),
     }
 
 

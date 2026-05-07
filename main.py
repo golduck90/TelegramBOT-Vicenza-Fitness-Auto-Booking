@@ -4,7 +4,7 @@
 
 Solo auto-booking. Pre-login: solo Login. Post-login: 3 bottoni.
 """
-import os, sys, logging, logging.handlers
+import os, sys, logging, logging.handlers, asyncio
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -97,7 +97,7 @@ async def error_handler(update: Update, context):
 
 
 async def post_init(app):
-    """Comandi per autocomplete (dado)."""
+    """Comandi per autocomplete + refresh catalogo iniziale."""
     commands = [
         BotCommand("start", "🏠 Menu principale"),
         BotCommand("login", "🔐 Accedi con WellTeam"),
@@ -111,6 +111,13 @@ async def post_init(app):
     ]
     await app.bot.set_my_commands(commands)
     logger.info(f"✅ Comandi registrati: {len(commands)}")
+
+    # Refresh catalogo iniziale (sincrono — prima di accettare richieste)
+    try:
+        result = await asyncio.to_thread(refresh_all_users)
+        logger.info(f"🌙 Refresh catalogo iniziale: {result} utenti aggiornati")
+    except Exception as e:
+        logger.error(f"⚠️ Refresh catalogo iniziale fallito: {e}")
 
 
 def register_all_handlers(app):
@@ -213,10 +220,7 @@ def main():
     reminder_checker = ReminderChecker(app)
     reminder_checker.start()
 
-    # Cache notturna all'avvio (thread separato)
-    import threading
-    threading.Thread(target=refresh_all_users, daemon=True).start()
-    logger.info("🌙 Cache calendario avviata in background")
+    # Refresh catalogo già fatto in post_init — non serve thread separato
 
     # Avvia bot
     webhook_url = os.environ.get("TELEGRAM_WEBHOOK_URL", "").strip()

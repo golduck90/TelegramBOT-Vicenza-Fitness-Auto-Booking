@@ -13,7 +13,7 @@ Questo permette di:
 """
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import config
 
@@ -120,3 +120,23 @@ def get_course_count() -> int:
     """Restituisce il numero totale di corsi unici nel catalogo."""
     data = _load()
     return sum(len(v) for v in data.values())
+
+
+def next_date_for_weekday(day_of_week: int) -> str:
+    """
+    Calcola la prossima data (YYYY-MM-DD) per un dato giorno della settimana.
+
+    Args:
+        day_of_week: 0=Lunedì ... 6=Domenica
+
+    Returns:
+        Stringa data in formato YYYY-MM-DD.
+        Se day_of_week è oggi, restituisce oggi.
+        Se day_of_week è un giorno passato questa settimana,
+        restituisce la stessa data della prossima settimana.
+    """
+    today = datetime.now()
+    now_wd = today.weekday()
+    offset = (day_of_week - now_wd) % 7
+    target = today + timedelta(days=offset)
+    return target.strftime("%Y-%m-%d")

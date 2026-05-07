@@ -1,1 +1,338 @@
-{}
+{
+  "3": {
+    "199:3:12:45:Piero": {
+      "service_id": 199,
+      "description": "Group Cycling",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "12:45",
+      "end_time": "13:30",
+      "instructor": "Piero",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "192:3:12:50:Cristina": {
+      "service_id": 192,
+      "description": "Pilates",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "12:50",
+      "end_time": "13:35",
+      "instructor": "Cristina",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "216:3:13:00:Vacu": {
+      "service_id": 216,
+      "description": "Vacu Class",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "13:00",
+      "end_time": "13:30",
+      "instructor": "Vacu",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "216:3:13:45:Vacu": {
+      "service_id": 216,
+      "description": "Vacu Class",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "13:45",
+      "end_time": "14:15",
+      "instructor": "Vacu",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "216:3:15:15:Vacu": {
+      "service_id": 216,
+      "description": "Vacu Class",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "15:15",
+      "end_time": "15:45",
+      "instructor": "Vacu",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "209:3:18:00:Cristina": {
+      "service_id": 209,
+      "description": "Gravity",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "18:00",
+      "end_time": "18:45",
+      "instructor": "Cristina",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "193:3:18:15:Diana": {
+      "service_id": 193,
+      "description": "Walking",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "18:15",
+      "end_time": "19:00",
+      "instructor": "Diana",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "208:3:18:15:Martina C.": {
+      "service_id": 208,
+      "description": "Step",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "18:15",
+      "end_time": "19:00",
+      "instructor": "Martina C.",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "216:3:18:30:Vacu": {
+      "service_id": 216,
+      "description": "Vacu Class",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "18:30",
+      "end_time": "19:00",
+      "instructor": "Vacu",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "209:3:19:00:Cristina": {
+      "service_id": 209,
+      "description": "Gravity",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "19:00",
+      "end_time": "19:45",
+      "instructor": "Cristina",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "193:3:19:15:Diana": {
+      "service_id": 193,
+      "description": "Walking",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "19:15",
+      "end_time": "20:00",
+      "instructor": "Diana",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "192:3:19:15:Martina C.": {
+      "service_id": 192,
+      "description": "Pilates",
+      "day_of_week": 3,
+      "day_name": "Giovedì",
+      "start_time": "19:15",
+      "end_time": "20:00",
+      "instructor": "Martina C.",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    }
+  },
+  "4": {
+    "191:4:07:00:Giacomo": {
+      "service_id": 191,
+      "description": "All. Funzionale",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "07:00",
+      "end_time": "07:45",
+      "instructor": "Giacomo",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "209:4:07:00:Marco": {
+      "service_id": 209,
+      "description": "Gravity",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "07:00",
+      "end_time": "07:45",
+      "instructor": "Marco",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "209:4:08:00:Marco": {
+      "service_id": 209,
+      "description": "Gravity",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "08:00",
+      "end_time": "08:45",
+      "instructor": "Marco",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "216:4:08:00:Vacu": {
+      "service_id": 216,
+      "description": "Vacu Class",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "08:00",
+      "end_time": "08:30",
+      "instructor": "Vacu",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "194:4:09:30:Emma": {
+      "service_id": 194,
+      "description": "Pilates Barre",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "09:30",
+      "end_time": "10:15",
+      "instructor": "Emma",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "193:4:10:15:Giacomo": {
+      "service_id": 193,
+      "description": "Walking",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "10:15",
+      "end_time": "11:00",
+      "instructor": "Giacomo",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "209:4:10:30:Cristina": {
+      "service_id": 209,
+      "description": "Gravity",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "10:30",
+      "end_time": "11:15",
+      "instructor": "Cristina",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "193:4:12:45:Giacomo": {
+      "service_id": 193,
+      "description": "Walking",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "12:45",
+      "end_time": "13:30",
+      "instructor": "Giacomo",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "196:4:13:00:Marco": {
+      "service_id": 196,
+      "description": "Bootcamp",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "13:00",
+      "end_time": "13:45",
+      "instructor": "Marco",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "210:4:17:00:Emma": {
+      "service_id": 210,
+      "description": "Gravity Functional Circuit",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "17:00",
+      "end_time": "17:45",
+      "instructor": "Emma",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "199:4:18:30:Piero": {
+      "service_id": 199,
+      "description": "Group Cycling",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "18:30",
+      "end_time": "19:15",
+      "instructor": "Piero",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "191:4:19:00:Giacomo": {
+      "service_id": 191,
+      "description": "All. Funzionale",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "19:00",
+      "end_time": "19:45",
+      "instructor": "Giacomo",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "216:4:19:00:Vacu": {
+      "service_id": 216,
+      "description": "Vacu Class",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "19:00",
+      "end_time": "19:30",
+      "instructor": "Vacu",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "199:4:19:30:Piero": {
+      "service_id": 199,
+      "description": "Group Cycling",
+      "day_of_week": 4,
+      "day_name": "Venerdì",
+      "start_time": "19:30",
+      "end_time": "20:15",
+      "instructor": "Piero",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    }
+  },
+  "5": {
+    "216:5:09:00:Vacu": {
+      "service_id": 216,
+      "description": "Vacu Class",
+      "day_of_week": 5,
+      "day_name": "Sabato",
+      "start_time": "09:00",
+      "end_time": "09:30",
+      "instructor": "Vacu",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "216:5:10:00:Vacu": {
+      "service_id": 216,
+      "description": "Vacu Class",
+      "day_of_week": 5,
+      "day_name": "Sabato",
+      "start_time": "10:00",
+      "end_time": "10:30",
+      "instructor": "Vacu",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "193:5:10:30:Marco": {
+      "service_id": 193,
+      "description": "Walking",
+      "day_of_week": 5,
+      "day_name": "Sabato",
+      "start_time": "10:30",
+      "end_time": "11:15",
+      "instructor": "Marco",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    },
+    "216:5:11:00:Vacu": {
+      "service_id": 216,
+      "description": "Vacu Class",
+      "day_of_week": 5,
+      "day_name": "Sabato",
+      "start_time": "11:00",
+      "end_time": "11:30",
+      "instructor": "Vacu",
+      "category": "Prenotazioni 2025/2026",
+      "first_seen": "2026-05-07"
+    }
+  }
+}
