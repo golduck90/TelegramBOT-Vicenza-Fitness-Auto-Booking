@@ -1,8 +1,8 @@
 """
 Handler: Booking Reminders (3h / 60min).
 
-Ogni ora ai minuti :05 e :35 controlla tutte le prenotazioni future
-degli utenti e invia reminder appropriati.
+Ogni 5 minuti controlla tutte le prenotazioni future degli utenti
+e invia reminder appropriati. Gira come task asincrono nel loop di PTB.
 
 Logica:
 - 3h prima → chiede conferma con bottoni SI/NO
@@ -14,10 +14,7 @@ Logica:
 """
 import asyncio
 import logging
-import time
-import threading
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CallbackQueryHandler
@@ -30,7 +27,6 @@ from handlers.decorators import rate_limit
 
 logger = logging.getLogger("reminders")
 
-# Check ogni 5 minuti (invece che :05/:35)
 CHECK_EVERY_N_MINUTES = 5
 SLEEP_SECONDS = 15
 
@@ -48,9 +44,9 @@ PHONE_VF = "+39 0444 276 206"
 
 class ReminderChecker:
     """
-    Thread checker che ogni 5 minuti controlla il DB locale (booking_reminders).
+    Checker asincrono che ogni 5 minuti controlla il DB locale (booking_reminders).
 
-    NO chiamate API nel loop principale.
+    NO chiamate API nel loop di controllo.
     Solo quando sta per inviare un reminder fa UNA chiamata API
     per verificare che la prenotazione sia ancora attiva su WellTeam.
     """
@@ -58,25 +54,31 @@ class ReminderChecker:
     def __init__(self, application):
         self._application = application
         self._running = False
-        self._thread: threading.Thread = None
-        self._app_loop: asyncio.AbstractEventLoop = None
+        self._task: asyncio.Task = None
 
     def start(self):
         if self._running:
             return
         self._running = True
-        try:
-            self._app_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            self._app_loop = None
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
+        # La creazione del task asincrono viene fatta in post_init
+        # quando l'event loop è attivo. Salviamo il riferimento.
+        logger.info(f"⏳ ReminderChecker armato (task async in post_init)")
+
+    async def start_async(self):
+        """Avvia il task asincrono (da chiamare quando l'event loop è attivo)."""
+        if not self._running:
+            return
+        if self._task and not self._task.done():
+            return
+        self._task = self._application.create_task(self._run())
         logger.info(f"✅ ReminderChecker avviato (check ogni {CHECK_EVERY_N_MINUTES} minuti, NO API flooding)")
 
     def stop(self):
         self._running = False
+        if self._task and not self._task.done():
+            self._task.cancel()
 
-    def _run(self):
+    async def _run(self):
         last_checked_minute = -1
         while self._running:
             try:
@@ -84,12 +86,14 @@ class ReminderChecker:
                 if now.minute % CHECK_EVERY_N_MINUTES == 0 and now.minute != last_checked_minute:
                     last_checked_minute = now.minute
                     logger.debug(f"🔍 Check reminder: {now.strftime('%H:%M')}")
-                    self._check_all()
+                    await self._check_all()
+            except asyncio.CancelledError:
+                break
             except Exception as e:
                 logger.error(f"Errore ReminderChecker: {e}", exc_info=True)
-            time.sleep(SLEEP_SECONDS)
+            await asyncio.sleep(SLEEP_SECONDS)
 
-    def _check_all(self):
+    async def _check_all(self):
         """Legge i reminder dal DB locale — ZERO chiamate API."""
         reminders = db.get_pending_reminders()
         if not reminders:
@@ -97,11 +101,11 @@ class ReminderChecker:
         now = datetime.now()
         for reminder in reminders:
             try:
-                self._process_reminder(reminder, now)
+                await self._process_reminder(reminder, now)
             except Exception as e:
                 logger.error(f"Errore processando reminder #{reminder['id']}: {e}")
 
-    def _process_reminder(self, reminder: dict, now: datetime):
+    async def _process_reminder(self, reminder: dict, now: datetime):
         """
         Processa un reminder: controlla finestra temporale e,
         solo se deve inviare, verifica con API live.
@@ -127,30 +131,37 @@ class ReminderChecker:
         # ── REMINDER 3H (60 < minuti <= 180) ──
         if THRESHOLD_60M < minutes_until <= THRESHOLD_3H and not reminder["reminder_3h_sent"]:
             # 🔍 VERIFICA LIVE prima di inviare
-            exists, user = self._verify_booking(telegram_id, reminder["lesson_id"])
+            exists, user = await self._verify_booking(telegram_id, reminder["lesson_id"])
             if not exists:
                 logger.info(f"Reminder #{reminder_id}: prenotazione non più attiva su WellTeam, rimosso")
                 db.delete_booking_reminder(reminder_id)
                 return
 
             # ✅ Ancora prenotato → invia reminder
-            self._send_3h_reminder(telegram_id, reminder)
+            await self._send_3h_reminder(telegram_id, reminder)
             db.mark_reminder_3h_sent(reminder_id)
             return
 
         # ── MESSAGGIO 60MIN (minuti <= 60, 3h già inviato) ──
         if minutes_until <= THRESHOLD_60M and reminder["reminder_3h_sent"] and not reminder["reminder_60m_sent"]:
+            # 🔍 VERIFICA LIVE prima di inviare (utente potrebbe aver disdetto dopo reminder 3h)
+            exists, user = await self._verify_booking(telegram_id, reminder["lesson_id"])
+            if not exists:
+                logger.info(f"Reminder #{reminder_id}: prenotazione non più attiva su WellTeam, rimosso")
+                db.delete_booking_reminder(reminder_id)
+                return
+
             if reminder["user_response"] is None:
-                self._send_60m_message(telegram_id, reminder)
+                await self._send_60m_message(telegram_id, reminder)
                 db.mark_reminder_60m_sent(reminder_id)
             elif reminder["user_response"] == "yes":
-                self._send_good_workout(telegram_id, reminder)
+                await self._send_good_workout(telegram_id, reminder)
                 db.mark_reminder_60m_sent(reminder_id)
 
-    def _verify_booking(self, telegram_id: int, lesson_id: int) -> tuple:
+    async def _verify_booking(self, telegram_id: int, lesson_id: int):
         """
         Chiamata API live per verificare che una specifica prenotazione
-        sia ancora attiva. Restituisce (esiste, user_dict).
+        sia ancora attiva. Restituisce (esiste, user).
         Se l'API fallisce, assume ancora prenotato (meglio un falso positivo).
         """
         user = db.get_user(telegram_id)
@@ -166,50 +177,44 @@ class ReminderChecker:
             )
         except Exception as e:
             logger.error(f"Errore API verify per user {telegram_id}: {e}")
-            return True, user  # Fallback safe: manda comunque reminder
+            return True, user
 
         if not success or not books:
             logger.warning(f"Verify booking: get_my_books fallito per user {telegram_id}")
-            return True, user  # Fallback safe
+            return True, user
 
         for book in books:
             if book.get("IDLesson") == lesson_id:
-                return True, user  # ✅ Ancora prenotato
+                return True, user
 
-        return False, user  # ❌ Non più prenotato
+        return False, user
 
-    # ── Metodi di invio messaggi (thread-safe) ──
+    # ── Metodi di invio messaggi (async diretti) ──
 
-    def _send_message(self, telegram_id: int, text: str, reply_markup=None):
+    async def _send_message(self, telegram_id: int, text: str, reply_markup=None):
         try:
-            coro = self._application.bot.send_message(
+            await self._application.bot.send_message(
                 chat_id=telegram_id,
                 text=text,
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=reply_markup,
             )
-            if self._app_loop and self._app_loop.is_running():
-                asyncio.run_coroutine_threadsafe(coro, self._app_loop)
-            else:
-                logger.warning(f"Loop non attivo, accodo messaggio per {telegram_id}")
         except Exception as e:
             logger.error(f"Impossibile inviare messaggio a {telegram_id}: {e}")
 
-    def _edit_message(self, telegram_id: int, message_id: int, text: str, reply_markup=None):
+    async def _edit_message(self, telegram_id: int, message_id: int, text: str, reply_markup=None):
         try:
-            coro = self._application.bot.edit_message_text(
+            await self._application.bot.edit_message_text(
                 chat_id=telegram_id,
                 message_id=message_id,
                 text=text,
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=reply_markup,
             )
-            if self._app_loop and self._app_loop.is_running():
-                asyncio.run_coroutine_threadsafe(coro, self._app_loop)
         except Exception as e:
             logger.error(f"Impossibile editare messaggio per {telegram_id}: {e}")
 
-    def _send_3h_reminder(self, telegram_id: int, reminder: dict):
+    async def _send_3h_reminder(self, telegram_id: int, reminder: dict):
         course_name = reminder["course_name"]
         lesson_date = reminder["lesson_date"]
         start_time = reminder["start_time"]
@@ -236,10 +241,10 @@ class ReminderChecker:
             ],
         ])
 
-        self._send_message(telegram_id, text, reply_markup=kb)
+        await self._send_message(telegram_id, text, reply_markup=kb)
         logger.info(f"📬 Reminder 3h inviato a {telegram_id}: {course_name} ({lesson_date} {start_time})")
 
-    def _send_60m_message(self, telegram_id: int, reminder: dict):
+    async def _send_60m_message(self, telegram_id: int, reminder: dict):
         course_name = reminder["course_name"]
         lesson_date = reminder["lesson_date"]
         start_time = reminder["start_time"]
@@ -259,10 +264,10 @@ class ReminderChecker:
             f"💪 Buon allenamento!"
         )
 
-        self._send_message(telegram_id, text)
+        await self._send_message(telegram_id, text)
         logger.info(f"📬 Messaggio 60min inviato a {telegram_id}: {course_name}")
 
-    def _send_good_workout(self, telegram_id: int, reminder: dict):
+    async def _send_good_workout(self, telegram_id: int, reminder: dict):
         course_name = reminder["course_name"]
         lesson_date = reminder["lesson_date"]
         start_time = reminder["start_time"]
@@ -274,10 +279,10 @@ class ReminderChecker:
             f"Ti aspettiamo! 🎯"
         )
 
-        self._send_message(telegram_id, text)
+        await self._send_message(telegram_id, text)
         logger.info(f"📬 Buon allenamento inviato a {telegram_id}: {course_name}")
 
-    def _send_cancelled(self, telegram_id: int, reminder: dict):
+    async def _send_cancelled(self, telegram_id: int, reminder: dict):
         course_name = reminder["course_name"]
         lesson_date = reminder["lesson_date"]
         start_time = reminder["start_time"]
@@ -290,7 +295,7 @@ class ReminderChecker:
             f"Qualcun altro potrà partecipare al tuo posto. 🙏"
         )
 
-        self._send_message(telegram_id, text)
+        await self._send_message(telegram_id, text)
         logger.info(f"📬 Cancellazione confermata per {telegram_id}: {course_name}")
 
 
@@ -350,7 +355,6 @@ async def cb_reminder_no(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.set_reminder_response(reminder["id"], "no")
 
     # Verifica se siamo ancora nei < 60 min — in quel caso blocca
-    from datetime import datetime
     lesson_date = reminder["lesson_date"]
     start_time = reminder["start_time"]
     try:
@@ -379,8 +383,6 @@ async def cb_reminder_no(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Recupera dettagli per la cancellazione...
-    # Devo cercare il booking dal calendario dell'utente
     success, books = wellteam.get_my_books(
         auth_token=user["auth_token"],
         app_token=config.WELLTEAM_APP_TOKEN,
@@ -446,6 +448,6 @@ async def cb_reminder_no(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def register(app):
     """Registra i callback handler per i pulsanti reminder."""
-    app.add_handler(CallbackQueryHandler(cb_reminder_yes, pattern=f"^{CALLBACK_YES}\\d+$"))
-    app.add_handler(CallbackQueryHandler(cb_reminder_no, pattern=f"^{CALLBACK_NO}\\d+$"))
+    app.add_handler(CallbackQueryHandler(cb_reminder_yes, pattern=f"^{CALLBACK_YES}\d+$"))
+    app.add_handler(CallbackQueryHandler(cb_reminder_no, pattern=f"^{CALLBACK_NO}\d+$"))
     logger.debug("✅ Handler reminder registrati")

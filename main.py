@@ -119,6 +119,10 @@ async def post_init(app):
     except Exception as e:
         logger.error(f"⚠️ Refresh catalogo iniziale fallito: {e}")
 
+    # Avvia reminder checker (ora l'event loop è attivo)
+    if hasattr(app, 'reminder_checker'):
+        await app.reminder_checker.start_async()
+
 
 def register_all_handlers(app):
     """Ordine: menu → auth → corsi → autobook → reminders."""
@@ -259,6 +263,7 @@ def main():
     from handlers.reminders import ReminderChecker
     reminder_checker = ReminderChecker(app)
     reminder_checker.start()
+    app.reminder_checker = reminder_checker  # Per post_init
 
     # Refresh catalogo già fatto in post_init — non serve thread separato
 
