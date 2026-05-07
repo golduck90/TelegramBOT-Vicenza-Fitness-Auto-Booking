@@ -533,6 +533,19 @@ def add_auto_book_item(telegram_id: int, service_id: int, description: str,
     return cur.lastrowid
 
 
+def check_auto_book_exists(telegram_id: int, service_id: int, day_of_week: int,
+                            start_time: str, instructor: str = "") -> bool:
+    """Verifica se un auto-book item attivo esiste già per questo corso."""
+    conn = _get_conn()
+    row = conn.execute("""
+        SELECT id FROM auto_book_items
+        WHERE telegram_id = ? AND service_id = ? AND day_of_week = ?
+          AND start_time = ? AND COALESCE(instructor,'') = ? AND is_active = 1
+        LIMIT 1
+    """, (telegram_id, service_id, day_of_week, start_time, instructor or "")).fetchone()
+    return row is not None
+
+
 def remove_auto_book_item(item_id: int, telegram_id: int) -> bool:
     """Rimuove un item auto-booking."""
     conn = _get_conn()

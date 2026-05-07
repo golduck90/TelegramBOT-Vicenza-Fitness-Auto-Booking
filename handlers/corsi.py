@@ -436,12 +436,25 @@ async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if spots_text:
         msg += f"{spots_text}\n\n"
 
-    msg += "*Attiva auto-booking:* il bot prenoterà ogni settimana appena disponibile."
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🤖 Attiva auto-booking", callback_data="book_do_auto")],
-        [InlineKeyboardButton("🔙 Indietro", callback_data=f"corsi_day_{day}")],
-        [InlineKeyboardButton("🏠 Menu", callback_data="menu_home")],
-    ])
+    # 🔍 Verifica se auto-booking già attivo per questo corso
+    auto_active = db.check_auto_book_exists(
+        telegram_id, service_id, day, start_time, instructor
+    )
+
+    if auto_active:
+        msg += "✅ *Auto-booking già attivo* per questo corso!"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🤖 Gestisci auto-booking", callback_data="menu_autobook")],
+            [InlineKeyboardButton("🔙 Indietro", callback_data=f"corsi_day_{day}")],
+            [InlineKeyboardButton("🏠 Menu", callback_data="menu_home")],
+        ])
+    else:
+        msg += "*Attiva auto-booking:* il bot prenoterà ogni settimana appena disponibile."
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🤖 Attiva auto-booking", callback_data="book_do_auto")],
+            [InlineKeyboardButton("🔙 Indietro", callback_data=f"corsi_day_{day}")],
+            [InlineKeyboardButton("🏠 Menu", callback_data="menu_home")],
+        ])
 
     await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=kb)
 
