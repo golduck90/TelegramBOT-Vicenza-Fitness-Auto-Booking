@@ -3,10 +3,15 @@ Handler: Lista Corsi e Prenotazione.
 
 📋 Lista Corsi → calendario settimanale (solo visualizzazione)
 📅 Prenota → scegli corso → auto o singola prenotazione
+
+Architettura:
+- course_catalog.json è l'unica fonte della verità per la struttura dei corsi
+- I dati live (posti disponibili, is_mine) vengono fetchati dall'API su richiesta
+- Niente più cache DB intermedia
 """
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 import db
@@ -36,15 +41,10 @@ def _friendly_error(msg: str) -> str:
     """Traduce un messaggio di errore del server in testo user-friendly."""
     if not msg:
         return "Errore sconosciuto durante la prenotazione. Riprova più tardi."
-
     msg_lower = msg.lower()
-
-    # Cerca pattern specifici
     for key, friendly in _SERVER_ERROR_MAP.items():
         if key.lower() in msg_lower:
             return friendly
-
-    # Se il messaggio è troppo generico o sembra un errore tecnico
     if msg_lower.startswith("badrequest") or msg_lower.startswith("error"):
         return (
             f"Il server ha risposto: \"{msg}\".\n\n"
@@ -53,24 +53,9 @@ def _friendly_error(msg: str) -> str:
             "Prova a prenotare direttamente in palestra o "
             "contatta la reception."
         )
-
-    # Fallback: mostra il messaggio originale ma con contesto
     return msg
 
 DAY_NAMES = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
-
-
-def _week_key():
-    now = datetime.now()
-    iso = now.isocalendar()
-    return f"{iso[0]}-W{iso[1]:02d}"
-
-
-def _next_week_key():
-    from datetime import timedelta
-    nxt = datetime.now() + timedelta(days=7)
-    iso = nxt.isocalendar()
-    return f"{iso[0]}-W{iso[1]:02d}"
 
 
 async def _edit_or_send(update, text, reply_markup=None):
@@ -79,6 +64,44 @@ async def _edit_or_send(update, text, reply_markup=None):
         await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=reply_markup)
     else:
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
+
+
+# ═══════════════════════════════════════════════════════════
+# HELPERS: catalog refresh + API live fetch
+# ═══════════════════════════════════════════════════════════
+
+async def _ensure_catalog_updated(telegram_id: int):
+    """Assicura che il catalogo sia popolato, forza refresh se vuoto."""
+    from course_catalog import get_course_count
+    if get_course_count() > 0:
+        return True  # catalogo già popolato
+    return await _force_catalog_refresh(telegram_id)
+
+
+async def _force_catalog_refresh(telegram_id: int) -> bool:
+    """Chiama l'API e aggiorna il catalogo."""
+    from schedule_cache import refresh_schedule
+    user = db.get_user(telegram_id)
+    if not user or not user.get("auth_token"):
+        return False
+    return await asyncio.to_thread(
+        refresh_schedule, telegram_id, user["auth_token"],
+        user.get("iyes_url", "") or config.WELLTEAM_IYES_URL,
+    )
+
+
+async def _fetch_live_schedule(telegram_id: int, auth_token: str, iyes_url: str,
+                                date_str: str) -> list:
+    """Chiama l'API WellTeam per un singolo giorno e restituisce i corsi live."""
+    success, items = await asyncio.to_thread(
+        wellteam.get_schedule,
+        auth_token=auth_token,
+        app_token=config.WELLTEAM_APP_TOKEN,
+        iyes_url=iyes_url,
+        start_date=date_str,
+        end_date=date_str,
+    )
+    return items if success else []
 
 
 # ═══════════════════════════════════════════════════════════
@@ -99,56 +122,27 @@ async def cmd_prenota(update: Update, context: ContextTypes.DEFAULT_TYPE, user: 
     await _show_corsi(update, context, mode="book")
 
 
-async def _check_cache(telegram_id):
-    """Verifica se c'è cache, altrimenti la forza."""
-    cached = db.get_cached_schedule(telegram_id, _week_key())
-    if not cached:
-        cached = db.get_cached_schedule(telegram_id, _next_week_key())
-    if not cached:
-        # Forza refresh
-        from schedule_cache import refresh_schedule
-        user = db.get_user(telegram_id)
-        if user:
-            await asyncio.to_thread(
-                refresh_schedule, telegram_id, user["auth_token"],
-                user.get("iyes_url", "") or config.WELLTEAM_IYES_URL
-            )
-            cached = db.get_cached_schedule(telegram_id, _week_key())
-            if not cached:
-                cached = db.get_cached_schedule(telegram_id, _next_week_key())
-    return cached
-
-
 async def _show_corsi(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: str = "view"):
-    """Mostra giorni con conteggio corsi."""
+    """Mostra giorni con conteggio corsi — tutto dal catalogo."""
     telegram_id = update.effective_user.id
-    cached = await _check_cache(telegram_id)
+    await _ensure_catalog_updated(telegram_id)
 
-    if not cached:
+    from course_catalog import get_all_days_with_courses
+    catalog_days = get_all_days_with_courses()
+
+    if not catalog_days:
         await _edit_or_send(update,
-            "⚠️ *Calendario non ancora disponibile.*\n"
+            "⚠️ *Catalogo non ancora disponibile.*\n"
             "Tocca il pulsante per scaricarlo.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔄 Scarica calendario", callback_data="force_refresh")],
                 [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")],
             ])
         )
-        context.user_data["corsi_mode"] = mode  # Ricorda la modalità
+        context.user_data["corsi_mode"] = mode
         return
 
-    # Conta per giorno dalla cache
-    day_count = {}
-    for c in cached:
-        dw = c["day_of_week"]
-        day_count[dw] = day_count.get(dw, 0) + 1
-
-    # Unisci col catalogo offline (per giorni non ancora visibili)
-    from course_catalog import get_all_days_with_courses
-    catalog_days = get_all_days_with_courses()
-    all_days = set(list(day_count.keys()) + list(catalog_days.keys()))
-
     now_wd = datetime.now().weekday()
-    # Finestra prenotabile: oggi + 3 giorni (VisibleDays=4)
     bookable_days = {(now_wd + d) % 7 for d in range(4)}
     mode_label = "📅 *Prenota un corso*"
     context.user_data["corsi_mode"] = mode
@@ -156,32 +150,24 @@ async def _show_corsi(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: 
     msg = f"{mode_label}\n\n📆 *Scegli un giorno:*\n\n"
     buttons = []
     for i in range(7):
-        cache_cnt = day_count.get(i, 0)
-        catalog_cnt = catalog_days.get(i, 0)
+        cnt = catalog_days.get(i, 0)
+        if cnt == 0:
+            continue
         today = " ← Oggi" if i == now_wd else ""
-        if cache_cnt > 0:
-            # Ha dati live: mostra conteggio reale
-            if i in bookable_days:
-                icon = "🟢"
-                label = "disponibile"
-            else:
-                icon = "🟡"
-                label = "in arrivo"
-            buttons.append([InlineKeyboardButton(
-                f"{icon} {DAY_NAMES[i]} ({cache_cnt} corsi, {label}){today}",
-                callback_data=f"corsi_day_{i}"
-            )])
-        elif catalog_cnt > 0:
-            # Solo catalogo offline (non ancora visibile dal server)
-            icon = "🟠"
-            label = f"in catalogo ({catalog_cnt})"
-            buttons.append([InlineKeyboardButton(
-                f"{icon} {DAY_NAMES[i]} — {label}{today}",
-                callback_data=f"corsi_day_{i}"
-            )])
 
-    # Aggiungi legenda
-    msg += "🟢 disponibile | 🟡 in arrivo | 🟠 in catalogo (solo auto-booking)\n\n"
+        if i in bookable_days:
+            icon = "🟢"
+            label = f"{cnt} corsi, prenotabili"
+        else:
+            icon = "🟠"
+            label = f"{cnt} corsi, solo auto-booking"
+
+        buttons.append([InlineKeyboardButton(
+            f"{icon} {DAY_NAMES[i]} ({label}){today}",
+            callback_data=f"corsi_day_{i}"
+        )])
+
+    msg += "🟢 prenotabili | 🟠 solo auto-booking (da catalogo)\n\n"
 
     buttons.append([InlineKeyboardButton("🔄 Ricarica calendario", callback_data="force_refresh")])
     buttons.append([InlineKeyboardButton("🔙 Menu", callback_data="menu_home")])
@@ -191,41 +177,21 @@ async def _show_corsi(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: 
 
 @rate_limit
 async def cb_show_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Mostra corsi per un giorno specifico."""
+    """Mostra corsi per un giorno — catalogo + API live per oggi+3."""
     query = update.callback_query
     await query.answer()
     telegram_id = query.from_user.id
     day = int(query.data.split("_")[-1])
     mode = context.user_data.get("corsi_mode", "view")
 
-    # Recupera dalla cache (prova settimana corrente, poi prossima)
-    wk = _week_key()
-    courses = db.get_cached_schedule_by_day(telegram_id, day, wk)
-    if not courses:
-        courses = db.get_cached_schedule_by_day(telegram_id, day, _next_week_key())
+    # ── 1) CATALOGO: struttura base (tutti i corsi conosciuti per questo giorno) ──
+    from course_catalog import get_day_courses
+    catalog_courses = get_day_courses(day)
 
-    if not courses:
-        # Prova dal catalogo offline
-        from course_catalog import get_day_courses
-        catalog_courses = get_day_courses(day)
-        if catalog_courses:
-            courses = []
-            for cc in catalog_courses:
-                courses.append({
-                    "service_id": cc["service_id"],
-                    "description": cc["description"],
-                    "start_time": cc["start_time"],
-                    "end_time": cc["end_time"],
-                    "instructor": cc.get("instructor", ""),
-                    "category": cc.get("category", ""),
-                    "is_mine": False,  # catalogo: nessun dato live
-                    "from_catalog": True,
-                })
-
-    if not courses:
+    if not catalog_courses:
         await query.edit_message_text(
             f"❌ Nessun corso per {DAY_NAMES[day]}.\n"
-            "Prova ad aggiornare il calendario.",
+            "Prova ad aggiornare il calendario o torna più tardi.",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔄 Aggiorna", callback_data="force_refresh")],
@@ -234,52 +200,108 @@ async def cb_show_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    msg = f"📅 *{DAY_NAMES[day]}* — {len(courses)} corsi\n\n"
-
-    # Determina se è un giorno prenotabile o in arrivo
+    # ── 2) API LIVE: per giorni prenotabili, prendi posti e is_mine ──
     now_wd = datetime.now().weekday()
     bookable_days = {(now_wd + d) % 7 for d in range(4)}
-    if day in bookable_days:
-        msg += "🟢 *Corsi prenotabili* — posti disponibili aggiornati in tempo reale\n\n"
-    else:
-        msg += "🟡 *Corsi in arrivo* — non ancora prenotabili.\n"
-        msg += "   Puoi impostare l'*auto-booking*, prenoterò appena disponibili!\n\n"
+    is_bookable = day in bookable_days
+
+    live_index = {}
+    if is_bookable:
+        # Calcola la data target per questo giorno della settimana
+        offset = (day - now_wd) % 7
+        target = datetime.now() + timedelta(days=offset)
+        if offset > 0 and target <= datetime.now():  # skip se non è oggi ed è passato
+            target += timedelta(days=7)
+        date_str = target.strftime("%Y-%m-%d")
+        user = db.get_user(telegram_id)
+        if user and user.get("auth_token"):
+            live_items = await _fetch_live_schedule(
+                telegram_id, user["auth_token"],
+                user.get("iyes_url", "") or config.WELLTEAM_IYES_URL,
+                date_str,
+            )
+            for item in live_items:
+                key = (
+                    item.get("IDServizio"),
+                    item.get("StartTime", "")[11:16] if len(item.get("StartTime", "")) > 16 else item.get("StartTime", ""),
+                    item.get("AdditionalInfo", ""),
+                )
+                live_index[key] = item
+
+    # ── 3) COSTRUISCI DISPLAY: catalogo + overlay API live ──
+    display = []
+    green = 0
+    orange = 0
+
+    for cat in sorted(catalog_courses, key=lambda c: c["start_time"]):
+        key = (cat["service_id"], cat["start_time"], cat.get("instructor", ""))
+        match = live_index.get(key)
+
+        if match:
+            # 🟢 API live: ha posti e dati freschi
+            avail = match.get("AvailablePlaces")
+            total = match.get("MaxPrenotazioni")
+            booked = match.get("IsUserPresent", False)
+            places_str = f" ({avail}/{total})" if avail is not None else ""
+            display.append({
+                "service_id": cat["service_id"],
+                "description": cat["description"],
+                "start_time": cat["start_time"],
+                "end_time": cat["end_time"],
+                "instructor": cat.get("instructor", ""),
+                "category": cat.get("category", ""),
+                "is_mine": booked,
+                "dot": "🟢",
+                "live_avail": avail,
+                "live_total": total,
+                "live_booked": booked,
+            })
+            green += 1
+        else:
+            # 🟠 Solo catalogo
+            display.append({
+                "service_id": cat["service_id"],
+                "description": cat["description"],
+                "start_time": cat["start_time"],
+                "end_time": cat["end_time"],
+                "instructor": cat.get("instructor", ""),
+                "category": cat.get("category", ""),
+                "is_mine": False,
+                "dot": "🟠",
+            })
+            orange += 1
+
+    total = len(display)
+    legenda_parts = []
+    if green: legenda_parts.append(f"🟢{green}")
+    if orange: legenda_parts.append(f"🟠{orange}")
+    legenda = " · ".join(legenda_parts)
+
+    msg = f"📅 *{DAY_NAMES[day]}* — {total} corsi ({legenda})\n\n"
+
     buttons = []
+    for c in sorted(display, key=lambda x: x["start_time"]):
+        ore = c["start_time"][:5]
+        booked = " ✅" if c.get("is_mine") else ""
 
-    # Raggruppa per categoria
-    cats = {}
-    for c in courses:
-        cat = c.get("category") or c.get("CategoryDescription") or "Altri"
-        if c.get("from_catalog"):
-            # Corsi dal catalogo: niente booking diretto
-            cat += " (📖 da catalogo)"
-        if cat not in cats:
-            cats[cat] = []
-        cats[cat].append(c)
+        if c["dot"] == "🟢":
+            instr = f" 👤{c['instructor']}" if c.get("instructor") else ""
+            spots = f" ({c['live_avail']}/{c['live_total']})" if c.get("live_avail") is not None else ""
+            btn_label = f"{c['dot']} {ore} {c['description']}{instr}{spots}{booked}"
+        else:
+            btn_label = f"{c['dot']} {ore} {c['description']}"
 
-    for cat_name, cat_courses in sorted(cats.items()):
-        msg += f"📂 *{cat_name}*\n"
-        for c in sorted(cat_courses, key=lambda x: x["start_time"]):
-            instr = f" — 👤 {c['instructor']}" if c.get("instructor") else ""
-            ore = c["start_time"][:5]
-            booked = " ✅ Già prenotato" if c.get("is_mine") else ""
-            msg += f"  🕐 {ore} {c['description']}{instr}{booked}\n"
-            if mode == "book":
-                cb = f"book_pick_{c['service_id']}_{day}_{c['start_time']}|{c.get('instructor','')[:20]}"
-                buttons.append([InlineKeyboardButton(f"📅 {c['description']} — {ore}", callback_data=cb)])
+        if mode == "book":
+            cb = f"book_pick_{c['service_id']}_{day}_{c['start_time']}|{c.get('instructor','')[:20]}"
+            buttons.append([InlineKeyboardButton(btn_label, callback_data=cb)])
 
-    msg += "\n"
-    if mode == "book":
-        msg += "*Tocca un corso per prenotarlo o impostare auto-booking.*"
+    msg += "*Tocca un corso per prenotarlo o attivare auto-booking.*"
 
     nav = [
         [InlineKeyboardButton("🔙 Giorni", callback_data="corsi_back_days"),
          InlineKeyboardButton("🏠 Menu", callback_data="menu_home")],
     ]
-
-    # Costruisce KB: navigation + corsi
-    kb_rows = nav + buttons
-    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(kb_rows))
+    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(nav + buttons))
 
 
 async def cb_back_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -293,7 +315,7 @@ async def cb_back_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @rate_limit
 async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Utente ha scelto un corso → chiede auto o singola."""
+    """Utente ha scelto un corso → mostra posti live via API + scegli azione."""
     query = update.callback_query
     await query.answer()
     telegram_id = query.from_user.id
@@ -330,17 +352,14 @@ async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_time = rest[0]
     instructor = rest[1] if len(rest) > 1 else ""
 
-    # Recupera info corso dalla cache
-    wk = _week_key()
-    courses = db.get_cached_schedule_by_day(telegram_id, day, wk)
-    if not courses:
-        courses = db.get_cached_schedule_by_day(telegram_id, day, _next_week_key())
+    # Recupera info corso dal catalogo
+    from course_catalog import get_day_courses
     desc = ""
     end_time = ""
-    for c in courses:
-        if c["service_id"] == service_id and c["start_time"] == start_time:
-            desc = c["description"]
-            end_time = c["end_time"]
+    for cat in get_day_courses(day):
+        if cat["service_id"] == service_id and cat["start_time"] == start_time:
+            desc = cat["description"]
+            end_time = cat.get("end_time", "")
             break
 
     if not desc:
@@ -354,7 +373,7 @@ async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Salva in context e chiedi decisione
+    # Salva in context
     context.user_data["book_course"] = {
         "service_id": service_id,
         "day": day,
@@ -364,18 +383,67 @@ async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "description": desc,
     }
 
+    # 🎯 LIVE FETCH: chiama API per vedere posti disponibili
+    user = db.get_user(telegram_id)
+    spots_text = ""
+    can_book_now = False
+    today = datetime.now()
+
+    if user and user.get("auth_token"):
+        # Calcola la prossima data per questo giorno
+        offset = (day - today.weekday()) % 7
+        target = today + timedelta(days=offset)
+        if offset > 0 and target <= today:  # skip se non è oggi ed è passato
+            target += timedelta(days=7)
+        date_str = target.strftime("%Y-%m-%d")
+
+        success, lessons = wellteam.get_schedule(
+            auth_token=user["auth_token"],
+            app_token=config.WELLTEAM_APP_TOKEN,
+            iyes_url=user.get("iyes_url", "") or config.WELLTEAM_IYES_URL,
+            start_date=date_str,
+            end_date=date_str,
+        )
+        if success and lessons:
+            for les in lessons:
+                if les.get("IDServizio") != service_id:
+                    continue
+                les_start = les.get("StartTime", "")[11:16] if len(les.get("StartTime", "")) > 16 else les.get("StartTime", "")
+                if les_start != start_time:
+                    continue
+                if instructor and instructor.lower() not in les.get("AdditionalInfo", "").lower():
+                    continue
+                # Trovato!
+                avail = les.get("AvailablePlaces", 0)
+                total = les.get("MaxPrenotazioni", 0)
+                already_booked = les.get("IsUserPresent", False)
+                if avail > 0 and not already_booked:
+                    spots_text = f"🎯 *{avail} posti disponibili* su {total}"
+                    can_book_now = True
+                elif already_booked:
+                    spots_text = "✅ *Sei già prenotato* per questa data!"
+                elif avail == 0:
+                    spots_text = "⏳ *Posti esauriti* per questa data"
+                else:
+                    spots_text = f"📊 {avail}/{total} posti"
+                break
+
     instr_text = f" 👤 {instructor}" if instructor else ""
-    await query.edit_message_text(
+    msg = (
         f"🏋️ *{desc}*\n"
         f"📅 {DAY_NAMES[day]} alle {start_time[:5]}{instr_text}\n\n"
-        f"*Cosa vuoi fare?*",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🤖 Prenota automaticamente ogni settimana", callback_data="book_do_auto")],
-            [InlineKeyboardButton("🔙 Indietro", callback_data=f"corsi_day_{day}")],
-            [InlineKeyboardButton("🏠 Menu", callback_data="menu_home")],
-        ])
     )
+    if spots_text:
+        msg += f"{spots_text}\n\n"
+
+    msg += "*Attiva auto-booking:* il bot prenoterà ogni settimana appena disponibile."
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🤖 Attiva auto-booking", callback_data="book_do_auto")],
+        [InlineKeyboardButton("🔙 Indietro", callback_data=f"corsi_day_{day}")],
+        [InlineKeyboardButton("🏠 Menu", callback_data="menu_home")],
+    ])
+
+    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=kb)
 
 
 @rate_limit
@@ -401,22 +469,21 @@ async def cb_book_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     # 2) Calcola la prossima data per questo giorno della settimana
-    from datetime import datetime, timedelta
     today = datetime.now()
-    target_date = today + timedelta(days=(c["day"] - today.weekday()) % 7)
-    if target_date <= today:
+    offset = (c["day"] - today.weekday()) % 7
+    target_date = today + timedelta(days=offset)
+    if offset > 0 and target_date <= today:  # skip se non è oggi ed è passato
         target_date += timedelta(days=7)
     date_str = target_date.strftime("%Y-%m-%d")
 
     # 3) Recupera il calendario per quella data
     user = db.get_user(telegram_id)
     if not user or not user.get("auth_token"):
-        # Conferma auto-booking e basta
         await _confirm_autobook(context, query, c, item_id, description)
         return
 
-    import wellteam, config
-    success, lessons = wellteam.get_schedule(
+    success, lessons = await asyncio.to_thread(
+        wellteam.get_schedule,
         auth_token=user["auth_token"],
         app_token=config.WELLTEAM_APP_TOKEN,
         iyes_url=user.get("iyes_url", "") or config.WELLTEAM_IYES_URL,
@@ -520,7 +587,6 @@ async def cb_ab_book_now_yes(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.edit_message_text("🔄 *Prenoto...*", parse_mode="Markdown")
 
     user = db.get_user(query.from_user.id)
-    import wellteam, config
     bs = f"{d['date']}T{d['start_time']}:00"
     be = f"{d['date']}T{d['end_time']}:00"
 
@@ -537,7 +603,6 @@ async def cb_ab_book_now_yes(update: Update, context: ContextTypes.DEFAULT_TYPE)
     db.log_booking(query.from_user.id, d["description"], d["lesson_id"], bs, "book", ok, msg)
 
     if ok:
-        # Segna come prenotato anche nell'auto-booking
         db.update_auto_book_last_booked(d["item_id"], d["lesson_id"], d["date"])
         text = (
             f"✅ *Prenotato!*\n\n"
@@ -547,7 +612,6 @@ async def cb_ab_book_now_yes(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"🎉 L'auto-booking prenoterà automaticamente le prossime settimane!"
         )
     else:
-        from handlers.corsi import _friendly_error
         text = (
             f"❌ *Prenotazione non riuscita*\n\n"
             f"🏋️ *{d['description']}*\n"
@@ -612,19 +676,17 @@ async def cb_book_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text("🔄 *Cerco posti disponibili...*", parse_mode="Markdown")
 
-    # Cerca la prossima lezione disponibile
-    from datetime import timedelta
     today = datetime.now()
     check_dates = [(today + timedelta(days=d)).strftime("%Y-%m-%d") for d in range(14)]
 
     found_lesson = None
     for date_str in check_dates:
-        # Verifica che sia il giorno giusto
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         if dt.weekday() != c["day"]:
             continue
 
-        success, items = wellteam.get_schedule(
+        success, items = await asyncio.to_thread(
+            wellteam.get_schedule,
             auth_token=user["auth_token"],
             app_token=config.WELLTEAM_APP_TOKEN,
             iyes_url=user.get("iyes_url", "") or config.WELLTEAM_IYES_URL,
@@ -668,7 +730,6 @@ async def cb_book_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Prenota!
     lesson = found_lesson
     lesson_id = lesson.get("IDLesson") or 0
     date = (lesson.get("DateLesson") or "")[:10]
@@ -676,7 +737,6 @@ async def cb_book_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
         st = lesson.get("StartTime", "")
         date = st[:10] if len(st) >= 10 else datetime.now().strftime("%Y-%m-%d")
     bs = lesson.get("StartTime", "")
-    # FIX: API restituisce "1900-01-01THH:MM:SS" (19 char). Estrai solo HH:MM:SS.
     bs_time = bs[11:19] if len(bs) >= 19 and "1900-01-01" in bs else bs
     bs = f"{date}T{bs_time}" if bs_time else bs
     be = lesson.get("EndTime", "")
@@ -749,7 +809,6 @@ async def cmd_prenotazioni(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
     msg = f"📅 *Le tue prenotazioni ({len(books)}):*\n\n"
     buttons = []
-    # Salva i dettagli per la cancellazione (evita callback_data lunghi)
     context.user_data["cancel_bookings"] = {}
     for b in books:
         date = b.get("StartTime", "")[:10]
@@ -763,7 +822,6 @@ async def cmd_prenotazioni(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         bid = b.get("BookingID")
         lid = b.get("IDLesson")
         if bid and lid:
-            # Salva in context.user_data (persistente grazie a PicklePersistence)
             context.user_data["cancel_bookings"][str(bid)] = {
                 "lesson_id": lid,
                 "start_time": b.get("StartTime", ""),
@@ -789,12 +847,10 @@ async def cb_cancel_prenotazione(update: Update, context: ContextTypes.DEFAULT_T
         ]))
         return
 
-    # cancel_{booking_id}
     booking_id = int(query.data.split("_")[-1])
     cancel_data = context.user_data.get("cancel_bookings", {}).get(str(booking_id))
 
     if not cancel_data:
-        # Fallback: recupera le prenotazioni attive
         await query.edit_message_text("❌ *Dati non trovati.* Ricarica le prenotazioni.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📅 Ricarica", callback_data="menu_prenotazioni")],
@@ -802,7 +858,6 @@ async def cb_cancel_prenotazione(update: Update, context: ContextTypes.DEFAULT_T
             ]))
         return
 
-    # Blocco cancellazione se < 60 minuti all'inizio
     start_iso = cancel_data.get("start_time", "")
     if start_iso and len(start_iso) >= 16:
         try:
@@ -821,7 +876,7 @@ async def cb_cancel_prenotazione(update: Update, context: ContextTypes.DEFAULT_T
                 )
                 return
         except ValueError:
-            pass  # Se non si riesce a parsare, procedi comunque
+            pass
 
     ok, msg = wellteam.cancel_course(
         auth_token=user["auth_token"],
@@ -869,12 +924,10 @@ def register(app):
     app.add_handler(CallbackQueryHandler(cb_ab_book_now_no, pattern="^ab_book_now_no$"))
     app.add_handler(CallbackQueryHandler(cb_force_refresh, pattern="^force_refresh$"))
 
-    # Comandi / menu callback
     app.add_handler(CallbackQueryHandler(cmd_lista_corsi, pattern="^menu_corsi$"))
     app.add_handler(CallbackQueryHandler(cmd_prenota, pattern="^menu_prenota$"))
     app.add_handler(CallbackQueryHandler(cmd_prenotazioni, pattern="^menu_prenotazioni$"))
 
-    # Comandi testuali (per autocomplete)
     app.add_handler(CommandHandler("corsi", cmd_lista_corsi))
     app.add_handler(CommandHandler("prenota", cmd_prenota))
     app.add_handler(CommandHandler("prenotazioni", cmd_prenotazioni))

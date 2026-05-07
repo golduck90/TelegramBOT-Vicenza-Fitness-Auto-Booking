@@ -66,7 +66,7 @@ def get_fernet_key() -> bytes:
 # ── Bot settings ──────────────────────────────────────────
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "VicenzaFitnessBot")
 ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()]
-RATE_LIMIT_PER_MINUTE = 10  # Max comandi al minuto per utente
+RATE_LIMIT_PER_MINUTE = 40  # Max comandi al minuto per utente
 MAX_LOGIN_ATTEMPTS = 5      # Tentativi di login falliti prima del ban temporaneo
 LOGIN_COOLDOWN_MINUTES = 15
 

@@ -96,19 +96,20 @@ class AutoBookScheduler:
             logger.warning(f"Applicazione non disponibile, skip messaggio per {telegram_id}")
             return
         try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if not loop or not loop.is_running():
+            logger.warning(f"Loop non attivo, skip messaggio per {telegram_id}")
+            return
+
+        try:
             coro = self._application.bot.send_message(
                 chat_id=telegram_id,
                 text=text,
                 parse_mode=ParseMode.MARKDOWN,
             )
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(coro, loop)
-            else:
-                logger.warning(f"Loop non ancora attivo, skip messaggio per {telegram_id}")
+            asyncio.run_coroutine_threadsafe(coro, loop)
         except Exception as e:
             logger.error(f"Impossibile inviare messaggio a {telegram_id}: {e}")
 

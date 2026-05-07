@@ -30,8 +30,9 @@ from handlers.decorators import rate_limit
 
 logger = logging.getLogger("reminders")
 
-# Check ogni ora a :05 e :35
-CHECK_MINUTES = [5, 35]
+# Check ogni 5 minuti (invece che :05/:35)
+CHECK_EVERY_N_MINUTES = 5
+SLEEP_SECONDS = 15
 
 # Soglie (minuti)
 THRESHOLD_3H = 180     # 3 ore
@@ -57,34 +58,36 @@ class ReminderChecker:
         self._application = application
         self._running = False
         self._thread: threading.Thread = None
+        self._app_loop: asyncio.AbstractEventLoop = None
 
     def start(self):
         if self._running:
             return
         self._running = True
-        self._thread = threading.Thread(target=self._loop, daemon=True)
+        # Acquisisce l'event loop principale (per invio messaggi da thread)
+        try:
+            self._app_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._app_loop = None
+        self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
-        logger.info(f"✅ ReminderChecker avviato (check ogni ora ai minuti {CHECK_MINUTES})")
+        logger.info(f"✅ ReminderChecker avviato (check ogni {CHECK_EVERY_N_MINUTES} minuti)")
 
     def stop(self):
         self._running = False
 
-    def _should_run_now(self) -> bool:
-        now = datetime.now()
-        return now.minute in CHECK_MINUTES and now.second < 10
-
-    def _loop(self):
+    def _run(self):
         last_checked_minute = -1
         while self._running:
             try:
                 now = datetime.now()
-                if now.minute in CHECK_MINUTES and now.minute != last_checked_minute:
+                if now.minute % CHECK_EVERY_N_MINUTES == 0 and now.minute != last_checked_minute:
                     last_checked_minute = now.minute
                     logger.debug(f"🔍 Check reminder: {now.strftime('%H:%M')}")
                     self._check_all()
             except Exception as e:
                 logger.error(f"Errore ReminderChecker: {e}", exc_info=True)
-            time.sleep(30)  # Check ogni 30 secondi
+            time.sleep(SLEEP_SECONDS)
 
     def _check_all(self):
         """Scansiona tutti gli utenti attivi e processa le loro prenotazioni."""
@@ -190,14 +193,10 @@ class ReminderChecker:
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=reply_markup,
             )
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(coro, loop)
+            if self._app_loop and self._app_loop.is_running():
+                asyncio.run_coroutine_threadsafe(coro, self._app_loop)
             else:
-                logger.warning(f"Loop non ancora attivo, skip messaggio per {telegram_id}")
+                logger.warning(f"Loop non attivo, accodo messaggio per {telegram_id}")
         except Exception as e:
             logger.error(f"Impossibile inviare messaggio a {telegram_id}: {e}")
 
@@ -211,12 +210,8 @@ class ReminderChecker:
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=reply_markup,
             )
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(coro, loop)
+            if self._app_loop and self._app_loop.is_running():
+                asyncio.run_coroutine_threadsafe(coro, self._app_loop)
         except Exception as e:
             logger.error(f"Impossibile editare messaggio per {telegram_id}: {e}")
 

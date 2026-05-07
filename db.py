@@ -177,6 +177,19 @@ def init_db():
     config.get_fernet_key()
 
 
+def _migrate_schedule_cache_places(conn):
+    """Aggiunge colonne available_places/total_places se mancanti."""
+    try:
+        conn.execute("SELECT available_places FROM schedule_cache LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.executescript("""
+            ALTER TABLE schedule_cache ADD COLUMN available_places INTEGER DEFAULT NULL;
+            ALTER TABLE schedule_cache ADD COLUMN total_places INTEGER DEFAULT NULL;
+        """)
+        conn.commit()
+        logging.getLogger("bot").info("✅ Colonne available_places/total_places aggiunte a schedule_cache")
+
+
 def _migrate_auto_book_retry(conn):
     """Aggiunge colonne retry a auto_book_items se mancanti."""
     try:

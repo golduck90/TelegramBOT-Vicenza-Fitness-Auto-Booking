@@ -190,11 +190,11 @@ def main():
     builder.concurrent_updates(True)
     builder.persistence(persistence)
     builder.rate_limiter(AIORateLimiter(
-        overall_max_rate=30,
+        overall_max_rate=120,
         overall_time_period=1,
-        group_max_rate=20,
+        group_max_rate=80,
         group_time_period=1,
-        max_retries=5,
+        max_retries=10,
     ))
     app = builder.build()
 
