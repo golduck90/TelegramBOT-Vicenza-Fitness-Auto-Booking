@@ -123,6 +123,10 @@ async def post_init(app):
     if hasattr(app, 'reminder_checker'):
         await app.reminder_checker.start_async()
 
+    # Salva l'event loop sullo scheduler per invio messaggi dal thread
+    if hasattr(app, 'scheduler'):
+        app.scheduler.set_loop(asyncio.get_running_loop())
+
 
 def register_all_handlers(app):
     """Ordine: menu → auth → corsi → autobook → reminders."""
@@ -258,6 +262,7 @@ def main():
     # Scheduler auto-booking (ogni notte 00:10 Roma + retry ogni ora)
     scheduler = AutoBookScheduler(application=app)
     scheduler.start()
+    app.scheduler = scheduler  # Per post_init (set event loop)
 
     # Reminder checker (ogni ora a :05 e :35)
     from handlers.reminders import ReminderChecker

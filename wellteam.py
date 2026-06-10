@@ -85,11 +85,13 @@ def authenticate(username: str, password: str, company_id: int = None) -> Option
         auth_token = data["Item"]
 
         # 2) Ottieni l'utente (per AppToken e user_id) — VALIDA il token
+        # NOTA: AppToken è RICHIESTO anche qui! Senza, l'API .NET restituisce 401.
         r2 = sess.get(
             f"{config.WELLTEAM_BASE_URL}/webuser/me",
             headers={
                 "AuthToken": auth_token,
                 "IYESUrl": config.WELLTEAM_IYES_URL,
+                "AppToken": config.WELLTEAM_APP_TOKEN,
             },
             timeout=15,
         )
@@ -104,7 +106,7 @@ def authenticate(username: str, password: str, company_id: int = None) -> Option
             return None
 
         user_info = me_data["Item"]
-        user_id = user_info.get("Id", 0)
+        user_id = user_info.get("UserID", 0)  # API restituisce "UserID", non "Id"
         # L'AppToken di solito è lo stesso AuthToken per l'app
         app_token = auth_token
 
