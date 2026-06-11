@@ -74,11 +74,11 @@ class AutoBookScheduler:
         self._last_run_day = -1
         self._last_token_refresh: Dict[int, float] = {}  # telegram_id → timestamp
         self._last_retry_check_minute = -1
-        self._loop = None  # Event loop del bot (set in post_init)
+        self._event_loop = None  # Event loop del bot (set in post_init)
 
     def set_loop(self, loop):
         """Salva il riferimento all'event loop (chiamato da post_init)."""
-        self._loop = loop
+        self._event_loop = loop
 
     def start(self):
         if self._running:
@@ -100,7 +100,7 @@ class AutoBookScheduler:
         if not self._application:
             logger.warning(f"Applicazione non disponibile, skip messaggio per {telegram_id}")
             return
-        loop = self._loop
+        loop = self._event_loop
         if not loop or not loop.is_running():
             logger.warning(f"Loop non attivo, skip messaggio per {telegram_id}")
             return
