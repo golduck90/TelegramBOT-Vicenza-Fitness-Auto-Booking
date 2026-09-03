@@ -1,0 +1,35 @@
+[Unit]
+Description=Vicenza Fitness Bot - Telegram auto-booking bot
+Documentation=https://github.com/user/TelegramBOT-Vicenza-Fitness-Auto-Booking
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Environment
+Environment=COMPOSE_PROJECT_NAME=bot-palestra
+WorkingDirectory=/root/apk-work/bot-palestra
+
+# Commands
+ExecStartPre=/usr/bin/docker compose pull --quiet
+ExecStart=/usr/bin/docker compose up --force-recreate --remove-orphans
+ExecStop=/usr/bin/docker compose down
+ExecReload=/usr/bin/docker compose restart
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vicenza-fitness-bot
+
+# Security
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/root/apk-work/bot-palestra
+
+[Install]
+WantedBy=multi-user.target

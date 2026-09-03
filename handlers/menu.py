@@ -12,6 +12,8 @@ from handlers.decorators import rate_limit
 
 logger = logging.getLogger("bot")
 
+BOT_VERSION = "2.0.0"
+
 
 # ═══════════════════════════════════════════════════════════
 # MENU PRINCIPALE
@@ -77,7 +79,8 @@ async def cb_menu_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = (
         "ℹ️ *Informazioni sul Bot*\n\n"
-        "🏋️ *Vicenza Fitness Bot* automatizza le tue prenotazioni "
+        f"🏋️ *Vicenza Fitness Bot* v{BOT_VERSION}\n"
+        "Automatizza le tue prenotazioni "
         "presso Vicenza Fitness (WellTeam).\n\n"
         f"📊 *Statistiche:*\n"
         f"👥 Utenti attivi: {stats['active_users']}\n"

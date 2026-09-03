@@ -7,7 +7,6 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     sqlite3 \
     qrencode \
     tzdata \
-    procps \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -18,17 +17,17 @@ RUN ln -snf /usr/share/zoneinfo/Europe/Rome /etc/localtime && \
 
 # Copy requirements and install Python packages (cache layer)
 COPY requirements.txt .
-RUN pip install --no-cache-dir "python-telegram-bot[job-queue,rate-limiter]>=20.0" && \
-    pip install --no-cache-dir requests>=2.31.0 cryptography>=41.0.0
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code (only what's needed — see .dockerignore)
 COPY . .
 
-# Run as non-root with persistent data directory
+# Create non-root user and data directory
 RUN useradd -m -u 1001 botuser && \
-    chown -R botuser:botuser /app && \
     mkdir -p /app/data && \
-    chown -R botuser:botuser /app/data
+    chown -R botuser:botuser /app
+
 USER botuser
 
 # Healthcheck: verifica che il processo Python sia vivo

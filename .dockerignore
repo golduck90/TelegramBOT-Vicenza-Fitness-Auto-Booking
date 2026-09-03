@@ -8,3 +8,11 @@ __pycache__
 bot.log
 .DS_Store
 docs/
+backups/
+tests/
+.fernet_key
+*.db
+*.db-shm
+*.db-wal
+*.pickle
+.pytest_cache

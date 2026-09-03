@@ -1,5 +1,35 @@
 # Changelog
 
+## [2.0.0] - 2026-09-03
+
+### Fixed
+- **Reminder 3H**: Rimosso `_verify_booking()` prima dell'invio — il reminder viene sempre inviato. La verifica API avviene solo per il 60min.
+- **Reminder cancellazione**: Se la prenotazione è stata cancellata (dall'app o da altri), il bot invia un messaggio informativo con dettagli invece di eliminare silenziosamente.
+- **Cancellazione < 60min**: Fix logica — usa stato del reminder (`reminder_60m_sent`) invece di ricalcolo temporale con `datetime.now()`.
+- **Service ID cambio stagione**: Aggiornati tutti gli `auto_book_items` da ID 191 (2025/2026) a 219 (2026/2027).
+- **Orario Martedì**: Aggiornato da 19:00 a 18:00 (cambiato dal server).
+- **Istruttore Giovedì**: Aggiornato da Giacomo a Marco (cambiato dal server).
+- **Fernet key permissions**: Corretti permessi da 644 a 600 nel container.
+
+### Changed
+- **Catalogo corsi**: Ricostruito da zero con dati 2026/2027 (38 corsi). Rimosso catalogo vecchio 2025/2026.
+- **Dockerfile**: Rimosso `procps` (non necessario), migliorata struttura, `.dockerignore` esteso.
+- **`.dockerignore`**: Aggiunti `.fernet_key`, `backups/`, `tests/`, `*.db*`, `*.pickle`.
+- **Versione bot**: Aggiunta versione `2.0.0` nel banner e nella sezione Info.
+
+### New
+- **`AGENTS.md`**: Guida completa per handoff progetto a nuovi agenti/sviluppatori.
+- **`docs/PLAN-v2.0.md`**: Piano completo con tutti i fix, miglioramenti UX, e roadmap.
+- **`scripts/backup.sh`**: Utility backup/restore con supporto tar.gz.
+- **`vicenza-fitness-bot.service`**: Systemd service per gestione container.
+- **`vicenza-fitness-bot-backup.timer`**: Systemd timer per backup automatico giornaliero.
+- **Reconciliation periodico**: Pianificato ogni 3 ore per sincronizzare prenotazioni dall'app.
+- **Rilevamento cambio stagione**: Pianificato per rilevare automaticamente il cambio `CategoryDescription`.
+
+### Cleanup
+- Rimossi 4 `booking_reminders` per lezioni passate (maggio 2026).
+- Reset `last_booked_lesson` e `last_booked_date` su tutti gli `auto_book_items`.
+
 ## [1.4.0] - 2026-05-06
 
 ### Fixed
