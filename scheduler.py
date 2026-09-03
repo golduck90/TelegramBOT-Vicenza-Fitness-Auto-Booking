@@ -294,7 +294,6 @@ class AutoBookScheduler:
                     continue
 
                 if lesson.get("IsUserPresent"):
-                    # Già prenotato (magari manualmente)
                     db.update_auto_book_last_booked(item_id, lesson.get("IDLesson"), date_str)
                     logger.info(f"Item #{item_id}: già prenotato per {date_str} (retry annullato)")
                     return
@@ -306,6 +305,36 @@ class AutoBookScheduler:
                 target_lesson = lesson
                 target_date = date_str
                 break
+
+            # Fallback: match per description se service_id non trovato (cambio stagione)
+            if not target_lesson:
+                for lesson in items:
+                    les_desc = lesson.get("ServiceDescription", "").strip().lower()
+                    les_start = lesson.get("StartTime", "")[11:16] if len(lesson.get("StartTime", "")) > 16 else lesson.get("StartTime", "")
+                    if les_desc != item.get("description", "").strip().lower():
+                        continue
+                    if les_start != start_time:
+                        continue
+                    if instructor and instructor.lower() not in lesson.get("AdditionalInfo", "").lower():
+                        continue
+
+                    new_sid = lesson.get("IDServizio")
+                    if new_sid and new_sid != service_id:
+                        db.update_auto_book_service_id(item_id, new_sid)
+                        logger.info(f"Item #{item_id}: service_id aggiornato {service_id} → {new_sid} (cambio stagione)")
+
+                    if lesson.get("IsUserPresent"):
+                        db.update_auto_book_last_booked(item_id, lesson.get("IDLesson"), date_str)
+                        logger.info(f"Item #{item_id}: già prenotato per {date_str} (retry annullato)")
+                        return
+
+                    if lesson.get("AvailablePlaces", 1) == 0:
+                        logger.info(f"Item #{item_id}: {date_str} — posti esauriti")
+                        continue
+
+                    target_lesson = lesson
+                    target_date = date_str
+                    break
 
             if target_lesson:
                 break
@@ -444,6 +473,36 @@ class AutoBookScheduler:
                 target_lesson = lesson
                 target_date = date_str
                 break
+
+            # Fallback: match per description se service_id non trovato (cambio stagione)
+            if not target_lesson:
+                for lesson in items:
+                    les_desc = lesson.get("ServiceDescription", "").strip().lower()
+                    les_start = lesson.get("StartTime", "")[11:16] if len(lesson.get("StartTime", "")) > 16 else lesson.get("StartTime", "")
+                    if les_desc != item.get("description", "").strip().lower():
+                        continue
+                    if les_start != start_time:
+                        continue
+                    if instructor and instructor.lower() not in lesson.get("AdditionalInfo", "").lower():
+                        continue
+
+                    new_sid = lesson.get("IDServizio")
+                    if new_sid and new_sid != service_id:
+                        db.update_auto_book_service_id(item_id, new_sid)
+                        logger.info(f"Item #{item_id}: service_id aggiornato {service_id} → {new_sid} (cambio stagione)")
+
+                    if lesson.get("IsUserPresent"):
+                        db.update_auto_book_last_booked(item_id, lesson.get("IDLesson"), date_str)
+                        logger.info(f"Item #{item_id}: già prenotato per {date_str}")
+                        return
+
+                    if lesson.get("AvailablePlaces", 1) == 0:
+                        logger.info(f"Item #{item_id}: {date_str} — posti esauriti")
+                        continue
+
+                    target_lesson = lesson
+                    target_date = date_str
+                    break
 
             if target_lesson:
                 break

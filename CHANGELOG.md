@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.1] - 2026-09-03
+
+### Fixed
+- **Cambio stagione automatico**: Il sistema rileva ora automaticamente il cambio stagione (es. "Prenotazioni 2025/2026" → "Prenotazioni 2026/2027") e migra i `service_id` degli `auto_book_items` senza intervento manuale.
+- **Duplicati catalogo corsi**: La chiave del catalogo ora usa `(description, day_of_week, start_time, instructor)` invece di `service_id`, che cambia ad ogni stagione. Stessi corsi da stagioni diverse non creano più voci duplicate.
+- **Fallback matching scheduler**: Se un `service_id` non viene trovato (cambio stagione non ancora migrato), lo scheduler prova il match per `description + orario` e aggiorna automaticamente il `service_id` nel DB.
+
+### Changed
+- **`course_catalog.py`**: Chiave catalogo basata su description (stabile tra stagioni). Aggiunto campo `_meta` per tracciare category e ultimo aggiornamento. Aggiunte funzioni `get_saved_category()`, `clear_catalog()`, `find_service_id_by_description()`.
+- **`schedule_cache.py`**: Ogni refresh recupera la category dall'API `/webbooking/services` e attiva la migrazione se necessario.
+- **`scheduler.py`**: Fallback su match per description in `_process_item()` e `_process_retry_item()`.
+
+### New
+- **`season_migration.py`**: Modulo per rilevamento e migrazione automatica cambio stagione. `detect_season_change()`, `migrate_service_ids()`, `run_migration_if_needed()`.
+- **`db.py`**: `update_auto_book_service_id()` e `get_all_auto_book_items()` per supporto migrazione.
+
 ## [2.0.0] - 2026-09-03
 
 ### Fixed

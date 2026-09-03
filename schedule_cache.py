@@ -48,6 +48,7 @@ def refresh_schedule(telegram_id: int, auth_token: str,
     """
     Scarica la schedule WellTeam per i prossimi 14 giorni
     e aggiorna il course_catalog (aggiunge nuovi corsi, non rimuove mai).
+    Rileva anche il cambio stagione e migra i service_id.
     """
     today = datetime.now(ROME_TZ)
     end_date = today + timedelta(days=14)
@@ -67,8 +68,31 @@ def refresh_schedule(telegram_id: int, auth_token: str,
         logger.debug(f"User {telegram_id}: nessun item nella schedule")
         return False
 
+    # Ottieni la category corrente dai servizi
+    category = ""
+    svc_success, services = wellteam.get_services(
+        auth_token=auth_token,
+        app_token=config.WELLTEAM_APP_TOKEN,
+        iyes_url=iyes_url,
+    )
+    if svc_success and services:
+        # La category è il Description del primo servizio (es. "Prenotazioni 2026/2027")
+        # Tutti i servizi nella stessa stagione hanno la stessa category
+        for svc in services:
+            cat = svc.get("Category", "")
+            if cat:
+                category = cat
+                break
+
+    # Rileva cambio stagione e migra se necessario
+    if category:
+        from season_migration import run_migration_if_needed
+        migration_stats = run_migration_if_needed(items, category)
+        if migration_stats:
+            logger.info(f"🔄 Migrazione stagione completata: {migration_stats}")
+
     from course_catalog import update_from_schedule
-    update_from_schedule(items)
+    update_from_schedule(items, category=category)
 
     logger.info(f"📚 User {telegram_id}: catalogo aggiornato con {len(items)} items dalla schedule")
     return True

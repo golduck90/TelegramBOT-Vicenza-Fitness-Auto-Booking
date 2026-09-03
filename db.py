@@ -557,6 +557,23 @@ def get_items_needing_retry() -> List[Dict]:
     return [dict(r) for r in rows]
 
 
+def update_auto_book_service_id(item_id: int, new_service_id: int):
+    """Aggiorna il service_id di un auto-book item (usato al cambio stagione)."""
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE auto_book_items SET service_id = ?, last_booked_lesson = NULL, last_booked_date = NULL WHERE id = ?",
+        (new_service_id, item_id)
+    )
+    conn.commit()
+
+
+def get_all_auto_book_items() -> List[Dict]:
+    """Tutti gli auto-book items (attivi e non) di tutti gli utenti."""
+    conn = _get_conn()
+    rows = conn.execute("SELECT * FROM auto_book_items").fetchall()
+    return [dict(r) for r in rows]
+
+
 
 # ═══════════════════════════════════════════════════════════
 # STATS
