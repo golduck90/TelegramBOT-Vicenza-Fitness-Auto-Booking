@@ -8,9 +8,10 @@
 - **Fallback matching scheduler**: Se un `service_id` non viene trovato (cambio stagione non ancora migrato), lo scheduler prova il match per `description + orario` e aggiorna automaticamente il `service_id` nel DB.
 
 ### Changed
-- **`course_catalog.py`**: Chiave catalogo basata su description (stabile tra stagioni). Aggiunto campo `_meta` per tracciare category e ultimo aggiornamento. Aggiunte funzioni `get_saved_category()`, `clear_catalog()`, `find_service_id_by_description()`.
-- **`schedule_cache.py`**: Ogni refresh recupera la category dall'API `/webbooking/services` e attiva la migrazione se necessario.
+- **`course_catalog.py`**: Chiave catalogo basata su description (stabile tra stagioni). Aggiunto campo `_meta` per tracciare category e ultimo aggiornamento. Aggiunte funzioni `get_saved_category()`, `clear_catalog()`, `find_service_id_by_description()`, `remove_legacy_keys()`.
+- **`schedule_cache.py`**: Ogni refresh recupera la category dall'API `/webbooking/services` e attiva la migrazione se necessario. Pulizia automatica chiavi legacy prima di ogni refresh.
 - **`scheduler.py`**: Fallback su match per description in `_process_item()` e `_process_retry_item()`.
+- **Catalogo — refresh dinamico**: Quando l'API restituisce dati per un giorno, le entries esistenti di quel giorno vengono cancellate e sostituite con dati freschi. I giorni oltre la finestra VisibleDays mantengono il catalogo cached. Nessun VisibleDays hardcoded.
 
 ### New
 - **`season_migration.py`**: Modulo per rilevamento e migrazione automatica cambio stagione. `detect_season_change()`, `migrate_service_ids()`, `run_migration_if_needed()`.

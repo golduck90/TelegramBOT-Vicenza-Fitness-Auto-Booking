@@ -91,7 +91,8 @@ def refresh_schedule(telegram_id: int, auth_token: str,
         if migration_stats:
             logger.info(f"🔄 Migrazione stagione completata: {migration_stats}")
 
-    from course_catalog import update_from_schedule
+    from course_catalog import update_from_schedule, remove_legacy_keys
+    remove_legacy_keys()
     update_from_schedule(items, category=category)
 
     logger.info(f"📚 User {telegram_id}: catalogo aggiornato con {len(items)} items dalla schedule")

@@ -49,6 +49,10 @@ def _save(data: Dict):
 def update_from_schedule(items: List[Dict], category: str = ""):
     """
     Aggiorna il catalogo con i corsi provenienti dalla schedule API.
+    Per ogni giorno presente nei dati API, cancella le entries esistenti
+    e le sostituisce con i dati freschi. I giorni non presenti nei dati API
+    (oltre la finestra VisibleDays) vengono lasciati intatti.
+
     items: lista di lesson object dall'API WellTeam (via get_schedule).
     category: category della stagione corrente (es. "Prenotazioni 2026/2027").
     """
@@ -62,8 +66,23 @@ def update_from_schedule(items: List[Dict], category: str = ""):
         data["_meta"]["category"] = category
     data["_meta"]["last_updated"] = now.strftime("%Y-%m-%d %H:%M:%S")
 
+    # 1. Raccogli i giorni presenti nei dati API
+    days_in_api = set()
     for item in items:
-        # Estrai il giorno della settimana (0=Lun ... 6=Dom)
+        date_str = item.get("DateLesson", "")[:10]
+        try:
+            dt = datetime.strptime(date_str, "%Y-%m-%d") if date_str else now
+            days_in_api.add(str(dt.weekday()))
+        except ValueError:
+            pass
+
+    # 2. Per ogni giorno presente nei dati API, cancella le entries esistenti
+    for day_key in days_in_api:
+        if day_key in data:
+            data[day_key] = {}
+
+    # 3. Inserisci dati freschi
+    for item in items:
         date_str = item.get("DateLesson", "")[:10]
         try:
             dt = datetime.strptime(date_str, "%Y-%m-%d") if date_str else now
@@ -71,8 +90,6 @@ def update_from_schedule(items: List[Dict], category: str = ""):
         except ValueError:
             day_of_week = now.weekday()
 
-        # Chiave stabile basata su description + giorno + ora + istruttore
-        # (service_id cambia ad ogni cambio stagione, description no)
         start_time = item.get("StartTime", "")[11:16] if len(item.get("StartTime", "")) > 16 else item.get("StartTime", "")
         description = item.get("ServiceDescription", "").strip()
         instructor = item.get("AdditionalInfo", "").strip()
@@ -88,27 +105,21 @@ def update_from_schedule(items: List[Dict], category: str = ""):
         if day_key not in data:
             data[day_key] = {}
 
-        existing = data[day_key].get(course_key_str)
-        if existing:
-            # Aggiorna service_id se cambiato (cambio stagione)
-            existing["service_id"] = item.get("IDServizio")
-            existing["category"] = item.get("CategoryDescription", "")
-        else:
-            data[day_key][course_key_str] = {
-                "service_id": item.get("IDServizio"),
-                "description": description,
-                "day_of_week": day_of_week,
-                "day_name": DAY_NAMES[day_of_week] if day_of_week < 7 else "?",
-                "start_time": start_time,
-                "end_time": item.get("EndTime", "")[11:16] if len(item.get("EndTime", "")) > 16 else item.get("EndTime", ""),
-                "instructor": instructor,
-                "category": item.get("CategoryDescription", ""),
-                "first_seen": now.strftime("%Y-%m-%d"),
-            }
+        data[day_key][course_key_str] = {
+            "service_id": item.get("IDServizio"),
+            "description": description,
+            "day_of_week": day_of_week,
+            "day_name": DAY_NAMES[day_of_week] if day_of_week < 7 else "?",
+            "start_time": start_time,
+            "end_time": item.get("EndTime", "")[11:16] if len(item.get("EndTime", "")) > 16 else item.get("EndTime", ""),
+            "instructor": instructor,
+            "category": item.get("CategoryDescription", ""),
+            "first_seen": now.strftime("%Y-%m-%d"),
+        }
 
     _save(data)
     total = sum(len(v) for k, v in data.items() if k != "_meta")
-    logger.info(f"📚 Catalogo corsi: {total} corsi")
+    logger.info(f"📚 Catalogo corsi: {total} corsi ({len(days_in_api)} giorni aggiornati)")
 
 
 def get_day_courses(day_of_week: int) -> List[Dict]:
@@ -153,6 +164,27 @@ def clear_catalog():
     """Svuota completamente il catalogo (usato al cambio stagione)."""
     _save({})
     logger.info("🗑️ Catalogo svuotato")
+
+
+def remove_legacy_keys() -> int:
+    """
+    Rimuove le entries con formato chiave legacy (service_id:day:time:instructor).
+    Il formato legacy inizia con un numero (service_id), quello nuovo inizia con testo (description).
+    """
+    data = _load()
+    removed = 0
+    for day_key in list(data.keys()):
+        if day_key == "_meta":
+            continue
+        courses = data.get(day_key, {})
+        legacy = [k for k in courses if k.split(":")[0].isdigit()]
+        for k in legacy:
+            del courses[k]
+            removed += 1
+    if removed:
+        _save(data)
+        logger.info(f"🗑️ Rimosse {removed} entries legacy dal catalogo")
+    return removed
 
 
 def find_service_id_by_description(description: str, day_of_week: int,
