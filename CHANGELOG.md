@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.0.1] - 2026-09-03
+## [2.0.1] - 2026-09-10
 
 ### Fixed
 - **Cambio stagione automatico**: Il sistema rileva ora automaticamente il cambio stagione (es. "Prenotazioni 2025/2026" → "Prenotazioni 2026/2027") e migra i `service_id` degli `auto_book_items` senza intervento manuale.
