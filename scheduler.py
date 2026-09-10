@@ -184,6 +184,19 @@ class AutoBookScheduler:
         )
         self._send_message(telegram_id, text)
 
+    def _notify_instructor_changed(self, item: Dict, new_instructor: str):
+        """Notifica cambio istruttore dopo prenotazione riuscita."""
+        telegram_id = item["telegram_id"]
+        old_instructor = item.get("instructor", "") or "?"
+        text = (
+            f"📢 *Auto-Booking — Cambio istruttore*\n\n"
+            f"🏋️ *{item['description']}*\n"
+            f"📅 {DAY_NAMES_NOTIFY[item['day_of_week']]} alle {item['start_time'][:5]}\n\n"
+            f"👤 Istruttore cambiato: *{old_instructor}* → *{new_instructor}*\n\n"
+            f"✅ Prenotazione effettuata e auto-booking aggiornato."
+        )
+        self._send_message(telegram_id, text)
+
     # ── Loop principale ────────────────────────────────────────────────
 
     def _rome_now(self) -> datetime:
@@ -260,12 +273,14 @@ class AutoBookScheduler:
         auth_token = item["auth_token"]
         iyes_url = item.get("iyes_url", "") or config.WELLTEAM_IYES_URL
         company_id = item.get("company_id", 2)
+        instructor_changed = False
 
         # La data target: cerco la prossima occorrenza del giorno
         day_of_week = item["day_of_week"]
         today = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
         target_lesson = None
         target_date = None
+        relaxed_candidate = None
 
         for day_offset in range(14):
             check_date = today + timedelta(days=day_offset)
@@ -273,7 +288,6 @@ class AutoBookScheduler:
                 continue
             date_str = check_date.strftime("%Y-%m-%d")
             if item.get("last_booked_date") == date_str and item.get("last_booked_lesson"):
-                # Già prenotato per questa data (dal sistema auto-booking)
                 logger.info(f"Item #{item_id}: già prenotato per {date_str}, retry annullato")
                 db.reset_auto_book_retry(item_id)
                 return
@@ -291,6 +305,8 @@ class AutoBookScheduler:
                 if les_start != start_time:
                     continue
                 if instructor and instructor.lower() not in lesson.get("AdditionalInfo", "").lower():
+                    if not relaxed_candidate:
+                        relaxed_candidate = (lesson, date_str)
                     continue
 
                 if lesson.get("IsUserPresent"):
@@ -306,9 +322,26 @@ class AutoBookScheduler:
                 target_date = date_str
                 break
 
+            # Match rilassato: istruttore cambiato
+            if not target_lesson and relaxed_candidate:
+                r_lesson, r_date = relaxed_candidate
+                new_instr = r_lesson.get("AdditionalInfo", "").strip()
+                if r_lesson.get("IsUserPresent"):
+                    db.update_auto_book_last_booked(item_id, r_lesson.get("IDLesson"), r_date)
+                    logger.info(f"Item #{item_id}: già prenotato per {r_date} (retry annullato)")
+                    return
+                if r_lesson.get("AvailablePlaces", 1) != 0:
+                    target_lesson = r_lesson
+                    target_date = r_date
+                    instructor_changed = True
+                    if instructor and new_instr:
+                        db.update_auto_book_instructor(item_id, new_instr)
+                        logger.info(f"Item #{item_id}: istruttore '{instructor}' → '{new_instr}'")
+
             # Fallback: match per description se service_id non trovato (cambio stagione)
             if not target_lesson:
-                for lesson in items:
+                desc_relaxed = None
+                for lesson in lessons:
                     les_desc = lesson.get("ServiceDescription", "").strip().lower()
                     les_start = lesson.get("StartTime", "")[11:16] if len(lesson.get("StartTime", "")) > 16 else lesson.get("StartTime", "")
                     if les_desc != item.get("description", "").strip().lower():
@@ -316,6 +349,8 @@ class AutoBookScheduler:
                     if les_start != start_time:
                         continue
                     if instructor and instructor.lower() not in lesson.get("AdditionalInfo", "").lower():
+                        if not desc_relaxed:
+                            desc_relaxed = (lesson, date_str)
                         continue
 
                     new_sid = lesson.get("IDServizio")
@@ -335,6 +370,26 @@ class AutoBookScheduler:
                     target_lesson = lesson
                     target_date = date_str
                     break
+
+                # Match rilassato description: istruttore cambiato
+                if not target_lesson and desc_relaxed:
+                    r_lesson, r_date = desc_relaxed
+                    new_instr = r_lesson.get("AdditionalInfo", "").strip()
+                    new_sid = r_lesson.get("IDServizio")
+                    if new_sid and new_sid != service_id:
+                        db.update_auto_book_service_id(item_id, new_sid)
+                        logger.info(f"Item #{item_id}: service_id aggiornato {service_id} → {new_sid} (cambio stagione)")
+                    if r_lesson.get("IsUserPresent"):
+                        db.update_auto_book_last_booked(item_id, r_lesson.get("IDLesson"), r_date)
+                        logger.info(f"Item #{item_id}: già prenotato per {r_date} (retry annullato)")
+                        return
+                    if r_lesson.get("AvailablePlaces", 1) != 0:
+                        target_lesson = r_lesson
+                        target_date = r_date
+                        instructor_changed = True
+                        if instructor and new_instr:
+                            db.update_auto_book_instructor(item_id, new_instr)
+                            logger.info(f"Item #{item_id}: istruttore '{instructor}' → '{new_instr}'")
 
             if target_lesson:
                 break
@@ -373,11 +428,15 @@ class AutoBookScheduler:
             # ✅ SUCCESSO
             db.update_auto_book_last_booked(item_id, lesson_id, date)
             db.log_booking(telegram_id, description, lesson_id, bs, "autobook", True, msg)
+            new_instr = item.get("instructor", "")
             db.upsert_booking_reminder(
                 telegram_id, lesson_id, date, start_time,
-                description, item.get("instructor", ""),
+                description, new_instr,
             )
-            self._notify_retry_success(item, attempt, date)
+            if instructor_changed and new_instr:
+                self._notify_instructor_changed(item, new_instr)
+            else:
+                self._notify_retry_success(item, attempt, date)
             logger.info(f"✅ AUTO-BOOK RETRY #{item_id}: {description} il {date} (tentativo {attempt}/{MAX_RETRY})")
         else:
             # ❌ FALLITO
@@ -414,6 +473,7 @@ class AutoBookScheduler:
         auth_token = item["auth_token"]
         iyes_url = item.get("iyes_url", "") or config.WELLTEAM_IYES_URL
         company_id = item.get("company_id", 2)
+        instructor_changed = False
 
         # Se c'è ancora un retry pendente, skippa (il retry è già in corso)
         if item.get("retry_count", 0) > 0:
@@ -424,6 +484,7 @@ class AutoBookScheduler:
         today = now_rome.replace(hour=0, minute=0, second=0, microsecond=0)
         target_lesson = None
         target_date = None
+        relaxed_candidate = None
 
         for day_offset in range(14):
             check_date = today + timedelta(days=day_offset)
@@ -459,6 +520,9 @@ class AutoBookScheduler:
                 if les_start != start_time:
                     continue
                 if instructor and instructor.lower() not in lesson.get("AdditionalInfo", "").lower():
+                    # Match rilassato: salva come candidato se istruttore diverso
+                    if not relaxed_candidate:
+                        relaxed_candidate = (lesson, date_str)
                     continue
 
                 if lesson.get("IsUserPresent"):
@@ -474,8 +538,25 @@ class AutoBookScheduler:
                 target_date = date_str
                 break
 
+            # Match rilassato: istruttore cambiato
+            if not target_lesson and relaxed_candidate:
+                r_lesson, r_date = relaxed_candidate
+                new_instr = r_lesson.get("AdditionalInfo", "").strip()
+                if r_lesson.get("IsUserPresent"):
+                    db.update_auto_book_last_booked(item_id, r_lesson.get("IDLesson"), r_date)
+                    logger.info(f"Item #{item_id}: già prenotato per {r_date}")
+                    return
+                if r_lesson.get("AvailablePlaces", 1) != 0:
+                    target_lesson = r_lesson
+                    target_date = r_date
+                    instructor_changed = True
+                    if instructor and new_instr:
+                        db.update_auto_book_instructor(item_id, new_instr)
+                        logger.info(f"Item #{item_id}: istruttore '{instructor}' → '{new_instr}'")
+
             # Fallback: match per description se service_id non trovato (cambio stagione)
             if not target_lesson:
+                desc_relaxed = None
                 for lesson in items:
                     les_desc = lesson.get("ServiceDescription", "").strip().lower()
                     les_start = lesson.get("StartTime", "")[11:16] if len(lesson.get("StartTime", "")) > 16 else lesson.get("StartTime", "")
@@ -484,6 +565,8 @@ class AutoBookScheduler:
                     if les_start != start_time:
                         continue
                     if instructor and instructor.lower() not in lesson.get("AdditionalInfo", "").lower():
+                        if not desc_relaxed:
+                            desc_relaxed = (lesson, date_str)
                         continue
 
                     new_sid = lesson.get("IDServizio")
@@ -503,6 +586,26 @@ class AutoBookScheduler:
                     target_lesson = lesson
                     target_date = date_str
                     break
+
+                # Match rilassato description: istruttore cambiato
+                if not target_lesson and desc_relaxed:
+                    r_lesson, r_date = desc_relaxed
+                    new_instr = r_lesson.get("AdditionalInfo", "").strip()
+                    new_sid = r_lesson.get("IDServizio")
+                    if new_sid and new_sid != service_id:
+                        db.update_auto_book_service_id(item_id, new_sid)
+                        logger.info(f"Item #{item_id}: service_id aggiornato {service_id} → {new_sid} (cambio stagione)")
+                    if r_lesson.get("IsUserPresent"):
+                        db.update_auto_book_last_booked(item_id, r_lesson.get("IDLesson"), r_date)
+                        logger.info(f"Item #{item_id}: già prenotato per {r_date}")
+                        return
+                    if r_lesson.get("AvailablePlaces", 1) != 0:
+                        target_lesson = r_lesson
+                        target_date = r_date
+                        instructor_changed = True
+                        if instructor and new_instr:
+                            db.update_auto_book_instructor(item_id, new_instr)
+                            logger.info(f"Item #{item_id}: istruttore '{instructor}' → '{new_instr}'")
 
             if target_lesson:
                 break
@@ -530,11 +633,15 @@ class AutoBookScheduler:
             logger.info(f"✅ AUTO-BOOK #{item_id}: {item['description']} il {date} alle {start_time}")
             db.update_auto_book_last_booked(item_id, lesson_id, date)
             db.log_booking(telegram_id, item["description"], lesson_id, bs, "autobook", True, msg)
+            new_instr = item.get("instructor", "")
             db.upsert_booking_reminder(
                 telegram_id, lesson_id, date, start_time,
-                item["description"], item.get("instructor", ""),
+                item["description"], new_instr,
             )
-            self._notify_success(item, date)
+            if instructor_changed and new_instr:
+                self._notify_instructor_changed(item, new_instr)
+            else:
+                self._notify_success(item, date)
         else:
             logger.warning(f"❌ AUTO-BOOK #{item_id} FALLITO: {item['description']}: {msg}")
             db.log_booking(telegram_id, item["description"], lesson_id, bs, "autobook", False, msg)

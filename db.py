@@ -567,6 +567,16 @@ def update_auto_book_service_id(item_id: int, new_service_id: int):
     conn.commit()
 
 
+def update_auto_book_instructor(item_id: int, new_instructor: str):
+    """Aggiorna l'istruttore di un auto-book item (usato al cambio istruttore)."""
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE auto_book_items SET instructor = ? WHERE id = ?",
+        (new_instructor, item_id)
+    )
+    conn.commit()
+
+
 def get_all_auto_book_items() -> List[Dict]:
     """Tutti gli auto-book items (attivi e non) di tutti gli utenti."""
     conn = _get_conn()
