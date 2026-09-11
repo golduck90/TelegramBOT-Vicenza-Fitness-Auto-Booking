@@ -12,7 +12,7 @@ from handlers.decorators import rate_limit
 
 logger = logging.getLogger("bot")
 
-BOT_VERSION = "2.0.0"
+BOT_VERSION = "2.0.2"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -100,59 +100,6 @@ async def cb_menu_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")],
         ])
     )
-
-
-# ═══════════════════════════════════════════════════════════
-# GESTIONE CORSISTI (aggiornamento cache)
-# ═══════════════════════════════════════════════════════════
-
-@rate_limit
-async def cb_force_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Forza il refresh del calendario."""
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(
-        "🔄 *Aggiorno calendario...*",
-        parse_mode="Markdown"
-    )
-    from schedule_cache import refresh_schedule
-    import config
-
-    user = db.get_user(query.from_user.id)
-    if not user or not user.get("auth_token"):
-        await query.edit_message_text(
-            "❌ *Devi prima fare login!*",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔐 Login", callback_data="login_start")],
-            ])
-        )
-        return
-
-    success = refresh_schedule(
-        query.from_user.id,
-        user["auth_token"],
-        user.get("iyes_url", "") or config.WELLTEAM_IYES_URL,
-    )
-
-    if success:
-        await query.edit_message_text(
-            "✅ *Calendario aggiornato!*\n\nOra puoi navigare i corsi.",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📅 Scegli un corso", callback_data="menu_prenota")],
-                [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")],
-            ])
-        )
-    else:
-        await query.edit_message_text(
-            "❌ *Errore aggiornamento.* Riprova più tardi.",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 Riprova", callback_data="force_refresh")],
-                [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")],
-            ])
-        )
 
 
 # ═══════════════════════════════════════════════════════════

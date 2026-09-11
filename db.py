@@ -155,6 +155,7 @@ def init_db():
     conn.commit()
     _migrate_auto_book_retry(conn)
     _migrate_drop_schedule_cache(conn)
+    _migrate_auto_book_alert_week(conn)
     # Genera chiave Fernet al primo avvio (trigger lato config)
     config.get_fernet_key()
 
@@ -179,6 +180,16 @@ def _migrate_auto_book_retry(conn):
         """)
         conn.commit()
         logging.getLogger("bot").info("✅ Colonne retry aggiunte a auto_book_items")
+
+
+def _migrate_auto_book_alert_week(conn):
+    """Aggiunge colonna last_alert_week a auto_book_items se mancante."""
+    try:
+        conn.execute("SELECT last_alert_week FROM auto_book_items LIMIT 1")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE auto_book_items ADD COLUMN last_alert_week INTEGER DEFAULT 0")
+        conn.commit()
+        logging.getLogger("bot").info("✅ Colonna last_alert_week aggiunta a auto_book_items")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -582,6 +593,16 @@ def get_all_auto_book_items() -> List[Dict]:
     conn = _get_conn()
     rows = conn.execute("SELECT * FROM auto_book_items").fetchall()
     return [dict(r) for r in rows]
+
+
+def update_auto_book_alert_week(item_id: int, week_number: int):
+    """Aggiorna la settimana dell'ultimo alert VisibleDays per un auto-book item."""
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE auto_book_items SET last_alert_week = ? WHERE id = ?",
+        (week_number, item_id)
+    )
+    conn.commit()
 
 
 

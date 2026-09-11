@@ -49,9 +49,11 @@ def _save(data: Dict):
 def update_from_schedule(items: List[Dict], category: str = ""):
     """
     Aggiorna il catalogo con i corsi provenienti dalla schedule API.
-    Per ogni giorno presente nei dati API, cancella le entries esistenti
-    e le sostituisce con i dati freschi. I giorni non presenti nei dati API
-    (oltre la finestra VisibleDays) vengono lasciati intatti.
+    Per ogni giorno futuro presente nei dati API, cancella le entries esistenti
+    e le sostituisce con i dati freschi. Per il giorno corrente (oggi), esegue
+    un merge: i corsi già iniziati (non più nell'API) vengono mantenuti.
+    I giorni non presenti nei dati API (oltre la finestra VisibleDays)
+    vengono lasciati intatti.
 
     items: lista di lesson object dall'API WellTeam (via get_schedule).
     category: category della stagione corrente (es. "Prenotazioni 2026/2027").
@@ -77,9 +79,15 @@ def update_from_schedule(items: List[Dict], category: str = ""):
             pass
 
     # 2. Per ogni giorno presente nei dati API, cancella le entries esistenti
+    #    MA per oggi fai merge (non cancellare corsi già iniziati)
+    today_weekday = now.weekday()
     for day_key in days_in_api:
-        if day_key in data:
+        if day_key not in data:
             data[day_key] = {}
+        if int(day_key) == today_weekday:
+            pass  # OGGI: merge — passo 3 sovrascrive chi matcha, aggiunge chi manca
+        else:
+            data[day_key] = {}  # FUTURI: clear + replace
 
     # 3. Inserisci dati freschi
     for item in items:
@@ -105,6 +113,7 @@ def update_from_schedule(items: List[Dict], category: str = ""):
         if day_key not in data:
             data[day_key] = {}
 
+        existing_entry = data.get(day_key, {}).get(course_key_str, {})
         data[day_key][course_key_str] = {
             "service_id": item.get("IDServizio"),
             "description": description,
@@ -114,7 +123,8 @@ def update_from_schedule(items: List[Dict], category: str = ""):
             "end_time": item.get("EndTime", "")[11:16] if len(item.get("EndTime", "")) > 16 else item.get("EndTime", ""),
             "instructor": instructor,
             "category": item.get("CategoryDescription", ""),
-            "first_seen": now.strftime("%Y-%m-%d"),
+            "first_seen": existing_entry.get("first_seen", now.strftime("%Y-%m-%d")),
+            "last_seen_api": now.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
     _save(data)
@@ -132,6 +142,22 @@ def get_day_courses(day_of_week: int) -> List[Dict]:
         list(data[day_key].values()),
         key=lambda c: c.get("start_time", "")
     )
+
+
+def get_courses_by_slot(description: str, day_of_week: int, start_time: str) -> List[Dict]:
+    """Cerca nel catalogo tutte le entry che matchano (description, day, time)
+    indipendentemente dall'istruttore. Usata per rilevare cambio istruttore."""
+    data = _load()
+    day_key = str(day_of_week)
+    if day_key not in data:
+        return []
+    results = []
+    desc_lower = description.strip().lower()
+    for key_str, course in data[day_key].items():
+        if (course.get("description", "").strip().lower() == desc_lower
+                and course.get("start_time") == start_time):
+            results.append(course)
+    return results
 
 
 def get_all_days_with_courses() -> Dict[int, int]:
@@ -184,6 +210,40 @@ def remove_legacy_keys() -> int:
     if removed:
         _save(data)
         logger.info(f"🗑️ Rimosse {removed} entries legacy dal catalogo")
+    return removed
+
+
+def cleanup_stale_entries(max_age_days: int = 28) -> list:
+    """
+    Rimuove corsi non visti nell'API per max_age_days giorni.
+    Restituisce lista di (description, day_of_week, start_time, instructor) rimossi.
+    """
+    data = _load()
+    cutoff = datetime.now() - timedelta(days=max_age_days)
+    cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+    removed = []
+
+    for day_key in list(data.keys()):
+        if day_key == "_meta":
+            continue
+        courses = data.get(day_key, {})
+        to_remove = []
+        for key_str, course in courses.items():
+            last_seen = course.get("last_seen_api") or course.get("first_seen", "")
+            if last_seen and last_seen < cutoff_str:
+                to_remove.append(key_str)
+                removed.append((
+                    course.get("description", ""),
+                    int(day_key),
+                    course.get("start_time", ""),
+                    course.get("instructor", ""),
+                ))
+        for k in to_remove:
+            del courses[k]
+
+    if removed:
+        _save(data)
+        logger.info(f"🗑️ Cleanup: rimossi {len(removed)} corsi stale (>{max_age_days}gg)")
     return removed
 
 

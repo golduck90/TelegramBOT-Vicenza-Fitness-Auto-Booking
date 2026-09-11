@@ -18,7 +18,6 @@ import db
 import wellteam
 import config
 from handlers.decorators import require_auth, rate_limit
-from handlers.menu import cb_force_refresh
 
 logger = logging.getLogger("bot")
 
@@ -133,15 +132,23 @@ async def _show_corsi(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: 
     telegram_id = update.effective_user.id
     await _ensure_catalog_updated(telegram_id)
 
+    # Refresh silenzioso: se fallisce, usa cache esistente
+    try:
+        await _force_catalog_refresh(telegram_id)
+    except Exception:
+        logger.warning(f"Refresh silenzioso fallito per {telegram_id}, uso cache")
+
     from course_catalog import get_all_days_with_courses
     catalog_days = get_all_days_with_courses()
 
     if not catalog_days:
         await _edit_or_send(update,
-            "⚠️ *Catalogo non ancora disponibile.*\n"
-            "Tocca il pulsante per scaricarlo.",
+            "⚠️ *Calendario non disponibile*\n\n"
+            "Non riesco a scaricare il calendario dei corsi.\n\n"
+            "📱 Verifica che l'app *WellTeam* funzioni correttamente, poi riprova.\n"
+            "Se il problema persiste, contatta la reception.",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 Scarica calendario", callback_data="force_refresh")],
+                [InlineKeyboardButton("📅 Riprova", callback_data="menu_prenota")],
                 [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")],
             ])
         )
@@ -175,7 +182,6 @@ async def _show_corsi(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: 
 
     msg += "🟢 prenotabili | 🟠 solo auto-booking (da catalogo)\n\n"
 
-    buttons.append([InlineKeyboardButton("🔄 Ricarica calendario", callback_data="force_refresh")])
     buttons.append([InlineKeyboardButton("🔙 Menu", callback_data="menu_home")])
 
     await _edit_or_send(update, msg, InlineKeyboardMarkup(buttons))
@@ -196,12 +202,13 @@ async def cb_show_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not catalog_courses:
         await query.edit_message_text(
-            f"❌ Nessun corso per {DAY_NAMES[day]}.\n"
-            "Prova ad aggiornare il calendario o torna più tardi.",
+            f"📭 *Nessun corso per {DAY_NAMES[day]}.*\n\n"
+            "Il calendario potrebbe non essere aggiornato.\n"
+            "📱 Verifica sull'app *WellTeam* se il corso è disponibile.",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 Aggiorna", callback_data="force_refresh")],
                 [InlineKeyboardButton("🔙 Giorni", callback_data="corsi_back_days")],
+                [InlineKeyboardButton("🏠 Menu", callback_data="menu_home")],
             ])
         )
         return
@@ -366,11 +373,13 @@ async def cb_pick_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not desc:
         await query.edit_message_text(
-            "❌ *Corso non trovato.* Forse il calendario è cambiato.",
+            "❌ *Corso non più disponibile*\n\n"
+            "Questo corso potrebbe essere stato rimosso o modificato.\n\n"
+            "📱 Verifica sull'app *WellTeam* se il corso esiste ancora.",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 Aggiorna", callback_data="force_refresh")],
-                [InlineKeyboardButton("🔙 Menu", callback_data="menu_home")],
+                [InlineKeyboardButton("🔙 Giorni", callback_data="corsi_back_days")],
+                [InlineKeyboardButton("🏠 Menu", callback_data="menu_home")],
             ])
         )
         return
@@ -940,7 +949,6 @@ def register(app):
     app.add_handler(CallbackQueryHandler(cb_cancel_prenotazione, pattern=r"^cancel_\d+$"))
     app.add_handler(CallbackQueryHandler(cb_ab_book_now_yes, pattern="^ab_book_now_yes$"))
     app.add_handler(CallbackQueryHandler(cb_ab_book_now_no, pattern="^ab_book_now_no$"))
-    app.add_handler(CallbackQueryHandler(cb_force_refresh, pattern="^force_refresh$"))
 
     app.add_handler(CallbackQueryHandler(cmd_lista_corsi, pattern="^menu_corsi$"))
     app.add_handler(CallbackQueryHandler(cmd_prenota, pattern="^menu_prenota$"))

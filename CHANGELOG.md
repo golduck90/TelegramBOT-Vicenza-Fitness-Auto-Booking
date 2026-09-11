@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.0.2] - 2026-09-11
+
+### Fixed
+- **Falso cambio istruttore "Giacomo → Giacomo"**: Lo scheduler ora normalizza (`strip().lower()`) i nomi degli istruttori prima di confrontarli. Se il nome è uguale dopo normalizzazione, non viene più inviata la notifica di cambio istruttore.
+- **Cache corsi — perdita corsi oggi**: Il refresh del catalogo durante la giornata non cancella più i corsi di oggi già iniziati. Per il giorno corrente viene eseguito un merge (i corsi non più nell'API vengono mantenuti), per i giorni futuri il comportamento resta clear+replace.
+
+### Changed
+- **`course_catalog.py`**: Nuova funzione `get_courses_by_slot()` per cercare corsi per (description, day, time) indipendentemente dall'istruttore. Usata dal check proattivo cambio istruttore.
+- **Refresh catalogo automatico su "Prenota"**: Ogni volta che un utente apre il menu "📅 Prenota", il bot esegue un refresh silenzioso dell'API. Se fallisce, usa la cache esistente senza mostrare errori.
+- **Refresh notturno alle 00:10**: Lo scheduler ora esegue `refresh_all_users()` per tutti gli utenti attivi prima di processare gli auto-book items. Il catalogo viene aggiornato per tutti gli utenti in modo centralizzato.
+- **Errori API — messaggi user-friendly**: Rimosso ogni bottone "🔄 Ricarica/Aggiorna calendario" dalla UI. In caso di errore API, il bot mostra un messaggio che suggerisce di verificare il funzionamento dell'app WellTeam.
+- **`first_seen` preservato**: Quando un corso viene aggiornato nel catalogo, il campo `first_seen` originale viene mantenuto invece di essere sovrascritto.
+- **Tracking `last_seen_api`**: Ogni entry del catalogo ora traccia il timestamp dell'ultimo aggiornamento dall'API, necessario per il cleanup automatico.
+
+### New
+- **Notifica proattiva cambio istruttore**: Ogni notte alle 00:10, dopo il refresh del catalogo, il bot confronta gli istruttori degli auto-book items attivi con quelli nel catalogo. Se un istruttore è cambiato, l'utente riceve una notifica immediata e l'auto-book item viene aggiornato nel DB. La prenotazione continuerà normalmente con il nuovo istruttore.
+- **Cleanup corsi stale (>4 settimane)**: Nuova funzione `cleanup_stale_entries()` in `course_catalog.py`. I corsi non visti nell'API per oltre 4 settimane vengono rimossi dalla cache. Eseguito automaticamente ogni notte alle 00:10.
+- **Alert corso non disponibile**: Se un utente ha auto-booking attivo e il corso non è disponibile nei prossimi 4 giorni (VisibleDays), riceve un alert settimanale (una volta per settimana ISO).
+- **Pausa auto-booking per corsi eliminati**: Quando un corso viene rimosso dalla cache dopo 4 settimane, gli utenti con auto-book attivo ricevono una notifica e l'auto-book viene messo in pausa (non eliminato). L'utente potrà riattivarlo manualmente se il corso riprende.
+- **`db.py`**: Nuova migration `last_alert_week` su `auto_book_items` e funzione `update_auto_book_alert_week()` per tracciare l'ultimo alert inviato per corso.
+
+### Removed
+- **Bottone "Ricarica calendario"**: Rimosso completamente dalla UI (schermata giorni, schermata giorno, errore corso non trovato). Il refresh avviene automaticamente aprendo "Prenota".
+- **`cb_force_refresh`**: Funzione e handler rimossi da `handlers/menu.py` e `handlers/corsi.py`.
+
 ## [2.0.1] - 2026-09-10
 
 ### Fixed

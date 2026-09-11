@@ -197,6 +197,82 @@ class AutoBookScheduler:
         )
         self._send_message(telegram_id, text)
 
+    def _notify_stale_autobook(self, removed: list):
+        """Disattiva auto-booking per corsi rimossi dalla cache e notifica utenti."""
+        all_items = db.get_all_auto_book_items()
+        for desc, day, start, instr in removed:
+            for item in all_items:
+                if (item.get("description", "").strip().lower() == desc.strip().lower()
+                        and item["day_of_week"] == day
+                        and item["start_time"][:5] == start[:5]):
+                    if item["is_active"]:
+                        db.toggle_auto_book_item(item["id"], item["telegram_id"])
+                        self._send_message(
+                            item["telegram_id"],
+                            f"🗑️ *Auto-Booking — Corso eliminato*\n\n"
+                            f"🏋️ *{item['description']}*\n"
+                            f"📅 {DAY_NAMES_NOTIFY[day]} alle {start[:5]}\n\n"
+                            f"Il corso non è più disponibile da oltre 4 settimane.\n"
+                            f"L'auto-booking è stato *messo in pausa*.\n\n"
+                            f"Se il corso riprenderà, potrai riattivarlo dal menu 🤖 Auto-Booking."
+                        )
+
+    def _check_instructor_changes(self):
+        """Confronta istruttori nel catalogo con gli auto_book_items attivi.
+        Se un istruttore è cambiato, notifica l'utente e aggiorna il DB."""
+        from course_catalog import get_courses_by_slot
+
+        items = db.get_all_enabled_auto_book_items()
+        if not items:
+            return
+
+        for item in items:
+            desc = item.get("description", "").strip()
+            day = item["day_of_week"]
+            start = item["start_time"][:5]
+            stored_instr = (item.get("instructor") or "").strip()
+
+            catalog_courses = get_courses_by_slot(desc, day, start)
+            if not catalog_courses:
+                continue  # Corso non in catalogo (oltre VisibleDays)
+
+            # Trova un istruttore diverso da quello salvato
+            new_instr = None
+            for course in catalog_courses:
+                cat_instr = (course.get("instructor") or "").strip()
+                if not cat_instr:
+                    continue
+                if cat_instr.lower() != stored_instr.lower():
+                    new_instr = cat_instr
+                    break
+
+            if not new_instr:
+                continue  # Istruttore invariato
+
+            # Normalizzazione per evitare falsi positivi
+            old_norm = stored_instr.strip().lower()
+            new_norm = new_instr.strip().lower()
+            if old_norm == new_norm:
+                continue
+
+            # Istruttore cambiato → aggiorna DB e notifica
+            telegram_id = item["telegram_id"]
+            db.update_auto_book_instructor(item["id"], new_instr)
+            logger.info(
+                f"Item #{item['id']}: istruttore cambiato "
+                f"'{stored_instr}' → '{new_instr}' (da catalogo)"
+            )
+
+            self._send_message(
+                telegram_id,
+                f"📢 *Auto-Booking — Cambio istruttore*\n\n"
+                f"🏋️ *{desc}*\n"
+                f"📅 {DAY_NAMES_NOTIFY[day]} alle {start}\n\n"
+                f"👤 Istruttore cambiato: *{stored_instr or '?'}* → *{new_instr}*\n\n"
+                f"L'auto-booking continuerà a funzionare normalmente "
+                f"con il nuovo istruttore."
+            )
+
     # ── Loop principale ────────────────────────────────────────────────
 
     def _rome_now(self) -> datetime:
@@ -229,6 +305,28 @@ class AutoBookScheduler:
 
     def _execute_all(self):
         """Esegue tutte le prenotazioni automatiche."""
+        # 1. Refresh catalogo per tutti gli utenti
+        try:
+            from schedule_cache import refresh_all_users
+            refresh_all_users()
+        except Exception as e:
+            logger.error(f"Refresh notturno catalogo fallito: {e}")
+
+        # 2. Check cambio istruttore (catalogo fresco, prima del cleanup)
+        try:
+            self._check_instructor_changes()
+        except Exception as e:
+            logger.error(f"Check cambio istruttore fallito: {e}")
+
+        # 3. Cleanup corsi stale (>4 settimane) + notifica auto-booking orphan
+        try:
+            from course_catalog import cleanup_stale_entries
+            removed = cleanup_stale_entries()
+            if removed:
+                self._notify_stale_autobook(removed)
+        except Exception as e:
+            logger.error(f"Cleanup corsi stale fallito: {e}")
+
         items = db.get_all_enabled_auto_book_items()
         if not items:
             logger.info("Nessun item auto-booking attivo")
@@ -434,7 +532,12 @@ class AutoBookScheduler:
                 description, new_instr,
             )
             if instructor_changed and new_instr:
-                self._notify_instructor_changed(item, new_instr)
+                old_norm = (item.get("instructor") or "").strip().lower()
+                new_norm = new_instr.strip().lower()
+                if old_norm != new_norm:
+                    self._notify_instructor_changed(item, new_instr)
+                else:
+                    self._notify_retry_success(item, attempt, date)
             else:
                 self._notify_retry_success(item, attempt, date)
             logger.info(f"✅ AUTO-BOOK RETRY #{item_id}: {description} il {date} (tentativo {attempt}/{MAX_RETRY})")
@@ -612,6 +715,26 @@ class AutoBookScheduler:
 
         if not target_lesson:
             logger.debug(f"Item #{item_id}: nessuna lezione trovata nei prossimi 14 giorni")
+            # Alert se il corso è nei prossimi 4 giorni (VisibleDays)
+            today = now_rome.replace(hour=0, minute=0, second=0, microsecond=0)
+            for day_offset in range(4):
+                check_date = today + timedelta(days=day_offset)
+                if check_date.weekday() == item["day_of_week"]:
+                    date_str = check_date.strftime("%Y-%m-%d")
+                    current_week = now_rome.isocalendar()[1]
+                    last_week = item.get("last_alert_week", 0)
+                    if current_week != last_week:
+                        db.update_auto_book_alert_week(item_id, current_week)
+                        self._send_message(
+                            telegram_id,
+                            f"⚠️ *Auto-Booking — Corso non disponibile*\n\n"
+                            f"🏋️ *{item['description']}*\n"
+                            f"📅 {DAY_NAMES_NOTIFY[item['day_of_week']]} alle {start_time}\n\n"
+                            f"Il corso non risulta disponibile questa settimana.\n"
+                            f"Potrebbe essere cancellato o avere posti esauriti.\n\n"
+                            f"📱 Verifica sull'app WellTeam o controlla dal menu 📅 Prenota."
+                        )
+                    break
             return
 
         # PRENOTA!
@@ -639,7 +762,12 @@ class AutoBookScheduler:
                 item["description"], new_instr,
             )
             if instructor_changed and new_instr:
-                self._notify_instructor_changed(item, new_instr)
+                old_norm = (item.get("instructor") or "").strip().lower()
+                new_norm = new_instr.strip().lower()
+                if old_norm != new_norm:
+                    self._notify_instructor_changed(item, new_instr)
+                else:
+                    self._notify_success(item, date)
             else:
                 self._notify_success(item, date)
         else:
