@@ -716,11 +716,15 @@ class AutoBookScheduler:
         if not target_lesson:
             logger.debug(f"Item #{item_id}: nessuna lezione trovata nei prossimi 14 giorni")
             # Alert se il corso è nei prossimi 4 giorni (VisibleDays)
+            # MA non se l'utente è già prenotato per quella data
             today = now_rome.replace(hour=0, minute=0, second=0, microsecond=0)
             for day_offset in range(4):
                 check_date = today + timedelta(days=day_offset)
                 if check_date.weekday() == item["day_of_week"]:
                     date_str = check_date.strftime("%Y-%m-%d")
+                    # Non avvisare se già prenotato per questa data
+                    if item.get("last_booked_date") == date_str:
+                        break
                     current_week = now_rome.isocalendar()[1]
                     last_week = item.get("last_alert_week", 0)
                     if current_week != last_week:
