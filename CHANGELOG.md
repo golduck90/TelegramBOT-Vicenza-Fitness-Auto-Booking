@@ -3,6 +3,7 @@
 ## [2.0.2] - 2026-09-11
 
 ### Fixed
+- **Alert VisibleDays su corso già prenotato**: L'alert "Corso non disponibile" non viene più inviato se l'utente è già prenotato per quella data (`last_booked_date` corrisponde). Prima l'alert scattava anche per corsi già prenotati.
 - **Falso cambio istruttore "Giacomo → Giacomo"**: Lo scheduler ora normalizza (`strip().lower()`) i nomi degli istruttori prima di confrontarli. Se il nome è uguale dopo normalizzazione, non viene più inviata la notifica di cambio istruttore.
 - **Cache corsi — perdita corsi oggi**: Il refresh del catalogo durante la giornata non cancella più i corsi di oggi già iniziati. Per il giorno corrente viene eseguito un merge (i corsi non più nell'API vengono mantenuti), per i giorni futuri il comportamento resta clear+replace.
 
