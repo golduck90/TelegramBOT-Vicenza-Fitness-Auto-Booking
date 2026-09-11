@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🏋️ Vicenza Fitness Bot — v2.0.0
+🏋️ Vicenza Fitness Bot — v2.0.2
 
 Solo auto-booking. Pre-login: solo Login. Post-login: 3 bottoni.
 """
@@ -214,7 +214,7 @@ def _print_banner():
 ║   / ____ \ |__| |  | | | |__| | | |_) | |__| | |__| | . \ _| |_| |\  | |__| |  ║
 ║  /_/    \_\____/   |_|  \____/  |____/ \____/ \____/|_|\_\_____|_| \_|\_____|  ║
 ╠════════════════════════════════════════════════════════════════════════════════╣
-║                             Outbooking Bot  v2.0.0                             ║
+║                             Outbooking Bot  v2.0.2                             ║
 ║                        Telegram Bot per Vicenza Fitness                        ║
 ╚════════════════════════════════════════════════════════════════════════════════╝"""
     print(banner, flush=True)
